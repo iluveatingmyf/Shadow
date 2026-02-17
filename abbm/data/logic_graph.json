@@ -1,0 +1,419 @@
+{
+    "1770396219926": {
+        "id": "1770396219926",
+        "alias": "R1:Auto-Away-Mode",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.isa_dw2hl_3ff9_contact_state"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "sensor.linp_hb01_7654_occupancy_sensor",
+                "state": "no one"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "service": "alarm_control_panel.alarm_arm_away",
+                "expected_state": "armed_away"
+            }
+        ]
+    },
+    "1770396746324": {
+        "id": "1770396746324",
+        "alias": "R2:Auto-Home Mode",
+        "triggers": [
+            {
+                "entity": [
+                    "sensor.linp_hb01_7654_occupancy_sensor"
+                ],
+                "state": "has one"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_away"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "service": "alarm_control_panel.alarm_arm_home",
+                "expected_state": "armed_home"
+            }
+        ]
+    },
+    "1770396946428": {
+        "id": "1770396946428",
+        "alias": "R3:Echo-Mode Shutdown",
+        "triggers": [
+            {
+                "entity": [
+                    "alarm_control_panel.lumi_mgl03_4e93_arming"
+                ],
+                "state": "armed_away"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "switch.cuco_v3_6df1_switch",
+                "service": "switch.turn_off",
+                "expected_state": "off"
+            },
+            {
+                "entity": "light.yeelink_bslamp1_b745_light",
+                "service": "light.turn_off",
+                "expected_state": "off"
+            },
+            {
+                "entity": "light.lumi_v3_6063_light",
+                "service": "light.turn_off",
+                "expected_state": "off"
+            }
+        ]
+    },
+    "1770867132098": {
+        "id": "1770867132098",
+        "alias": "R14:Overload Warning",
+        "triggers": [
+            {
+                "entity": [
+                    "sensor.cuco_v3_6df1_electric_power"
+                ],
+                "state": ""
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "text.xiaomi_s12_c045_play_text",
+                "service": "text.set_value",
+                "expected_state": "unknown"
+            }
+        ]
+    },
+    "1770954491043": {
+        "id": "1770954491043",
+        "alias": "R4:Welcome Light",
+        "triggers": [
+            {
+                "entity": [
+                    "alarm_control_panel.lumi_mgl03_4e93_arming"
+                ],
+                "state": "armed_home"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "light.lumi_v3_6063_light",
+                "service": "light.turn_on",
+                "expected_state": "on"
+            }
+        ]
+    },
+    "1770954809178": {
+        "id": "1770954809178",
+        "alias": "R5:Motion Recording",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.lumi_bmgl01_2821_motion_sensor"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_away"
+            }
+        ],
+        "actions": [
+            {
+                "entity": [
+                    "switch.chuangmi_ipc009_b918_switch_status"
+                ],
+                "service": "switch.turn_on",
+                "expected_state": "on"
+            }
+        ]
+    },
+    "1770954983554": {
+        "id": "1770954983554",
+        "alias": "R6:Privacy Protection",
+        "triggers": [
+            {
+                "entity": [
+                    "sensor.linp_hb01_7654_occupancy_sensor"
+                ],
+                "state": "has one"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "camera.chuangmi_ipc009_b918_camera_control",
+                "service": "camera.turn_off",
+                "expected_state": "unknown"
+            }
+        ]
+    },
+    "1770955877817": {
+        "id": "1770955877817",
+        "alias": "R7:Camera Light Link",
+        "triggers": [
+            {
+                "entity": [
+                    "switch.chuangmi_ipc009_b918_switch_status"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_away"
+            }
+        ],
+        "actions": []
+    },
+    "1770956208791": {
+        "id": "1770956208791",
+        "alias": "R8:Intruder Alarm",
+        "triggers": [
+            {
+                "entity": [
+                    "light.yeelink_bslamp1_b745_light"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_away"
+            },
+            {
+                "entity": "binary_sensor.lumi_bmgl01_2821_motion_sensor",
+                "state": "on"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "text.xiaomi_s12_c045_play_text",
+                "service": "text.set_value",
+                "expected_state": "unknown"
+            }
+        ]
+    },
+    "1770956466880": {
+        "id": "1770956466880",
+        "alias": "R9:Bedroom Reading Ambience",
+        "triggers": [
+            {
+                "entity": [
+                    "button.xiaomi_s12_c045_play_music"
+                ],
+                "state": ""
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "binary_sensor.lumi_bmgl01_2821_motion_sensor",
+                "state": "off"
+            },
+            {
+                "entity": "light.yeelink_bslamp1_b745_light",
+                "state": "on"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "light.yeelink_bslamp1_b745_light",
+                "service": "light.turn_on",
+                "expected_state": "on"
+            }
+        ]
+    },
+    "1770963314211": {
+        "id": "1770963314211",
+        "alias": "R10:Report weather",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.lumi_bmgl01_2821_motion_sensor"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_night"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "text.xiaomi_s12_c045_execute_text_directive",
+                "service": "text.set_value",
+                "expected_state": "unknown"
+            },
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "service": "alarm_control_panel.alarm_arm_home",
+                "expected_state": "armed_home"
+            }
+        ]
+    },
+    "1770963638026": {
+        "id": "1770963638026",
+        "alias": "R11:Door Breach Alert",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.isa_dw2hl_3ff9_contact_state"
+                ],
+                "state": "off"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_night"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "text.xiaomi_s12_c045_execute_text_directive",
+                "service": "text.set_value",
+                "expected_state": "unknown"
+            }
+        ]
+    },
+    "1770963835175": {
+        "id": "1770963835175",
+        "alias": "R12:Manual Switch Floor Lamp",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.switch_158d0001c1f861"
+                ],
+                "state": "off"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "light.lumi_v3_6063_light",
+                "service": "light.toggle",
+                "expected_state": "unknown"
+            }
+        ]
+    },
+    "1770964379508": {
+        "id": "1770964379508",
+        "alias": "R13:Device Health Check",
+        "triggers": [
+            {
+                "entity": [
+                    "switch.chuangmi_ipc009_b918_switch_status"
+                ],
+                "state": "unavailable"
+            }
+        ],
+        "conditions": [],
+        "actions": []
+    },
+    "1770966894355": {
+        "id": "1770966894355",
+        "alias": "R15:Sleep Mode",
+        "triggers": [
+            {
+                "entity": [
+                    "input_boolean.simulate_23_00"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_home"
+            }
+        ],
+        "actions": []
+    },
+    "1770977786879": {
+        "id": "1770977786879",
+        "alias": "R16:Morning Wakeup",
+        "triggers": [
+            {
+                "entity": [
+                    "input_boolean.simulate_07_00"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "light.yeelink_bslamp1_b745_light",
+                "service": "light.turn_on",
+                "expected_state": "on"
+            }
+        ]
+    },
+    "1770977957610": {
+        "id": "1770977957610",
+        "alias": "R17:Light the Toilet",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.lumi_bmgl01_2c6c_motion_sensor"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "state": "armed_night"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "switch.cuco_v3_d474_switch",
+                "service": "switch.turn_on",
+                "expected_state": "on"
+            }
+        ]
+    },
+    "1770978137833": {
+        "id": "1770978137833",
+        "alias": "R18:Night light energy saving",
+        "triggers": [
+            {
+                "entity": [
+                    "switch.cuco_v3_d474_switch_status"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [],
+        "actions": [
+            {
+                "entity": "switch.cuco_v3_d474_switch",
+                "service": "switch.turn_off",
+                "expected_state": "off"
+            }
+        ]
+    }
+}
