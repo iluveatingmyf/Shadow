@@ -42,6 +42,49 @@ def slugify(text):
     text = re.sub(r'_+', '_', text)         # 连续下划线变一个
     return text.strip('_')
 
+# --- 在 save_app_trace 之前添加 ---
+
+class ExperimentLogger:
+    def __init__(self, log_file="experiment.log"):
+        self.terminal = sys.stdout
+        self.log_file = open(os.path.join(current_dir, log_file), "a", encoding="utf-8")
+        self.success_list = [] # 用于存放成功的记录摘要
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def add_success(self, rid, sample_idx, pcap_tag):
+        self.success_list.append({
+            "rule": rid,
+            "sample": sample_idx,
+            "pcap": pcap_tag,
+            "time": datetime.now().strftime("%H:%M:%S")
+        })
+
+    def generate_final_report(self):
+        print("\n" + "="*30)
+        print("📊 FINAL EXECUTABLE LOG REPORT")
+        print("="*30)
+        if not self.success_list:
+            print("❌ No successful execution traces found.")
+        else:
+            print(f"✅ Total Successful Traces: {len(self.success_list)}")
+            print(f"{'RULE_ID':<20} | {'SAMPLE':<8} | {'PCAP_TAG'}")
+            for item in self.success_list:
+                print(f"{item['rule']:<20} | {item['sample']:<8} | {item['pcap']}")
+        print("="*30 + "\n")
+
+# 初始化全局 Logger
+exp_logger = ExperimentLogger()
+sys.stdout = exp_logger # 重定向所有 print 和 log 函数的输出
+
+
 
 def save_app_trace(record, filename="experiment_traces.jsonl"):
     abs_path = os.path.join(current_dir, filename) 
@@ -114,7 +157,7 @@ def toggle_automations(enable=True):
     except: pass
 
 # ================= 2. WebSocket 追踪逻辑 (已优化) =================
-async def monitor_event_bus(rid, auto_id, target_entity, expected_state, timeout=60.0):
+async def monitor_event_bus(rid, auto_id, target_entity, expected_state, timeout=80.0):
     events = {
         "automation_triggered": {"timestamp": None, "ha_fired_at": None, "entity_id": auto_id},
         "service_call": {"timestamp": None, "ha_fired_at": None, "entity_id": None, "service": None},
@@ -171,7 +214,7 @@ async def monitor_event_bus(rid, auto_id, target_entity, expected_state, timeout
             except asyncio.TimeoutError:
                 continue 
     return events
-    
+
 # ================= 3. SSH 控制与系统 SCP 拉取 =================
 
 def run_remote_capture(rule_id, sample_idx):
@@ -327,6 +370,7 @@ def run_abbm_profiling(logic_graph_path, sample_cnt=10):
                 # 简单判定：只要拿到了状态改变的时间戳，就算采集成功
                 if app_events["state_changed"]["timestamp"]:
                     log(f"Trace Complete: {action['entity']} reached {target_phys_state}", "SUCCESS")
+                    exp_logger.add_success(rid, i + 1, session_tag)
                 else:
                     log(f"Trace Incomplete: Missing final state change", "WARN")
 
@@ -336,6 +380,7 @@ def run_abbm_profiling(logic_graph_path, sample_cnt=10):
     finally:
         log(">>> PHASE 3: Restoring Environment", "INFO")
         toggle_automations(enable=True)
+        exp_logger.generate_final_report()
 
 
 
