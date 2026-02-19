@@ -1,0 +1,444 @@
+- id: '1769591461666'
+  alias: ZYD-AwayCamera
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.isa_dw2hl_3ff9_magnet_sensor
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_away
+  action:
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id: switch.chuangmi_ipc009_b918_switch_status
+  mode: single
+- id: '1769592119247'
+  alias: ZYD-AwayHome
+  description: 离家
+  trigger:
+  - platform: state
+    entity_id:
+    - sensor.linp_hb01_7654_occupancy_sensor
+    to: no one
+    from: has one
+  condition:
+  - condition: state
+    state: armed_home
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  action:
+  - service: alarm_control_panel.alarm_arm_away
+    data: {}
+    target:
+      entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  mode: single
+- id: '1770357483998'
+  alias: ZYD-InHome
+  description: 回家
+  trigger:
+  - platform: state
+    entity_id:
+    - sensor.linp_hb01_7654_occupancy_sensor
+    to: has one
+    from: no one
+  condition:
+  - condition: state
+    state: armed_away
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  action:
+  - service: alarm_control_panel.alarm_arm_home
+    data: {}
+    target:
+      entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  mode: single
+- id: '1770396219926'
+  alias: R1:Auto-Away-Mode
+  description: User leaves house, go through entrance
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.isa_dw2hl_3ff9_contact_state
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: sensor.linp_hb01_7654_occupancy_sensor
+    state: no one
+  action:
+  - service: alarm_control_panel.alarm_arm_away
+    metadata: {}
+    data: {}
+    target:
+      entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  mode: single
+- id: '1770396746324'
+  alias: R2:Auto-Home Mode
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - sensor.linp_hb01_7654_occupancy_sensor
+    from: no one
+    to: has one
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_away
+  action:
+  - service: alarm_control_panel.alarm_arm_home
+    metadata: {}
+    data: {}
+    target:
+      entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  mode: single
+- id: '1770396946428'
+  alias: R3:Echo-Mode Shutdown
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - alarm_control_panel.lumi_mgl03_4e93_arming
+    from:
+    to: armed_away
+  condition: []
+  action:
+  - service: switch.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.cuco_v3_6df1_switch
+  - service: light.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.yeelink_bslamp1_b745_light
+  - service: light.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.lumi_v3_6063_light
+  mode: single
+- id: '1770867132098'
+  alias: R14:Overload Warning
+  description: ''
+  trigger:
+  - platform: numeric_state
+    entity_id:
+    - sensor.cuco_v3_6df1_electric_power
+    above: 10
+  condition: []
+  action:
+  - service: text.set_value
+    metadata: {}
+    data:
+      value: You need to calm down
+    target:
+      entity_id: text.xiaomi_s12_c045_play_text
+  mode: single
+- id: '1770954491043'
+  alias: R4:Welcome Light
+  description: Turn on the floor lamp when user comes back home after 20:00
+  trigger:
+  - platform: state
+    entity_id:
+    - alarm_control_panel.lumi_mgl03_4e93_arming
+    from: armed_away
+    to: armed_home
+  condition:
+  - condition: time
+    after: '20:00'
+  action:
+  - service: light.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.lumi_v3_6063_light
+  mode: single
+- id: '1770954809178'
+  alias: R5:Motion Recording
+  description: Turn on the Camera when motion detected at bedroom while user is not
+    at home
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.lumi_bmgl01_2821_motion_sensor
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_away
+  action:
+  - service: switch.turn_on
+    target:
+      entity_id:
+      - switch.chuangmi_ipc009_b918_switch_status
+    data: {}
+  mode: single
+- id: '1770954983554'
+  alias: R6:Privacy Protection
+  description: Protect user's  privacy when he is at home and turns on the camera
+    for some reason
+  trigger:
+  - platform: state
+    entity_id:
+    - sensor.linp_hb01_7654_occupancy_sensor
+    attribute: occupancy_status-2-1
+    from: no one
+    to: has one
+  condition: []
+  action:
+  - service: camera.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: camera.chuangmi_ipc009_b918_camera_control
+  mode: single
+- id: '1770955877817'
+  alias: R7:Camera Light Link
+  description: Turn on camera for motion tracking need more light to see clearly
+  trigger:
+  - platform: state
+    entity_id:
+    - switch.chuangmi_ipc009_b918_switch_status
+    to: 'on'
+    from: 'off'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_away
+  action:
+  - service: light.turn_on
+    metadata: {}
+    data: {}
+    target:
+      device_id: 9dbd84fbe532882ae76218b550ebca83
+  mode: single
+- id: '1770956208791'
+  alias: R8:Intruder Alarm
+  description: When user is not at home, bedroom has somebody had R7 turn on the light,
+    play siren for threaten intruder
+  trigger:
+  - platform: state
+    entity_id:
+    - light.yeelink_bslamp1_b745_light
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_away
+  - condition: state
+    entity_id: binary_sensor.lumi_bmgl01_2821_motion_sensor
+    state: 'on'
+  action:
+  - service: text.set_value
+    metadata: {}
+    data:
+      value: Warning!
+    target:
+      entity_id: text.xiaomi_s12_c045_play_text
+  mode: single
+- id: '1770956466880'
+  alias: R9:Bedroom Reading Ambience
+  description: User always read in the bed while spaker playing slow music, adjust
+    the brightness of the bed light
+  trigger:
+  - platform: state
+    entity_id:
+    - button.xiaomi_s12_c045_play_music
+    from:
+    to:
+  condition:
+  - condition: state
+    state: 'off'
+    entity_id: binary_sensor.lumi_bmgl01_2821_motion_sensor
+  - condition: state
+    entity_id: light.yeelink_bslamp1_b745_light
+    state: 'on'
+  action:
+  - service: light.turn_on
+    target:
+      entity_id: light.yeelink_bslamp1_b745_light
+    data:
+      brightness_step_pct: 30
+  mode: single
+- id: '1770963314211'
+  alias: R10:Report weather
+  description: report the weather while user get up, help user choose clothes before
+    going out.
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.lumi_bmgl01_2821_motion_sensor
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_night
+  - condition: sun
+    before: sunset
+  action:
+  - service: text.set_value
+    metadata: {}
+    data:
+      value: 播报今天天气
+    target:
+      entity_id: text.xiaomi_s12_c045_execute_text_directive
+  - service: alarm_control_panel.alarm_arm_home
+    metadata: {}
+    data: {}
+    target:
+      entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+  mode: single
+- id: '1770963638026'
+  alias: R11:Door Breach Alert
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.isa_dw2hl_3ff9_contact_state
+    from: 'on'
+    to: 'off'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_night
+  action:
+  - service: text.set_value
+    metadata: {}
+    data:
+      value: 学狗叫
+    target:
+      entity_id: text.xiaomi_s12_c045_execute_text_directive
+  mode: single
+- id: '1770963835175'
+  alias: R12:Manual Switch Floor Lamp
+  description: 'control living room lamp at anywhere
+
+    '
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.switch_158d0001c1f861
+    from: 'on'
+    to: 'off'
+  condition: []
+  action:
+  - service: light.toggle
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.lumi_v3_6063_light
+  mode: single
+- id: '1770964379508'
+  alias: R13:Device Health Check
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - switch.chuangmi_ipc009_b918_switch_status
+    from:
+    to: unavailable
+  condition: []
+  action:
+  - repeat:
+      count: 3
+      sequence:
+      - service: light.turn_on
+        target:
+          entity_id: light.yeelink_bslamp1_b745_light
+        data:
+          brightness_pct: 100
+          rgb_color:
+          - 255
+          - 0
+          - 0
+      - delay: 00:00:01
+      - service: light.turn_off
+        target:
+          entity_id: light.yeelink_bslamp1_b745_light
+      - delay: 00:00:01
+  mode: single
+- id: '1770966894355'
+  alias: R15:Sleep Mode
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - input_boolean.simulate_23_00
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_home
+  action:
+  - service: alarm_control_panel.alarm_arm_night
+    metadata: {}
+    data: {}
+  mode: single
+- id: '1770977786879'
+  alias: R16:Morning Wakeup
+  description: 'Wakeup user at 7:00 using bed light
+
+    '
+  trigger:
+  - platform: state
+    entity_id:
+    - input_boolean.simulate_07_00
+    from: 'off'
+    to: 'on'
+  condition: []
+  action:
+  - service: light.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.yeelink_bslamp1_b745_light
+  mode: single
+- id: '1770977957610'
+  alias: R17:Light the Toilet
+  description: Convenient for getting up at night to use the toilet
+  trigger:
+  - platform: state
+    entity_id:
+    - binary_sensor.lumi_bmgl01_2c6c_motion_sensor
+    from: 'off'
+    to: 'on'
+  condition:
+  - condition: state
+    entity_id: alarm_control_panel.lumi_mgl03_4e93_arming
+    state: armed_night
+  action:
+  - service: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.cuco_v3_d474_switch
+  mode: single
+- id: '1770978137833'
+  alias: R18:Night light energy saving
+  description: ''
+  trigger:
+  - platform: state
+    entity_id:
+    - switch.cuco_v3_d474_switch_status
+    from: 'off'
+    to: 'on'
+    for:
+      hours: 0
+      minutes: 1
+      seconds: 0
+  condition: []
+  action:
+  - service: switch.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.cuco_v3_d474_switch
+  mode: single

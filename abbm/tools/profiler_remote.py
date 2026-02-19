@@ -95,7 +95,7 @@ HA_TOKEN = load_token(TOKEN_FILE)
 HEADERS = {"Authorization": f"Bearer {HA_TOKEN}", "content-type": "application/json"}
 
 # ================= 1. 环境致动逻辑 =================
-def ensure_physical_state(entity, target_state, timeout=10):
+def ensure_physical_state(entity, target_state, timeout=80):
     if isinstance(entity, list): entity = entity[0]
     if target_state == "unknown": return True
 
@@ -238,7 +238,10 @@ def run_abbm_profiling(logic_graph_path, sample_cnt=10):
     toggle_automations(enable=False)
 
     try:
+        SKIPPED_RULES = ["1770396219926"]
         for rid, rule in rules.items():
+            if rid in SKIPPED_RULES:
+                continue
             alias = rule.get('alias', '')
             auto_id = f"automation.{alias.lower().replace(' ', '_').replace('-', '_').replace(':', '_')}"
             auto_id = re.sub(r'_+', '_', auto_id).strip('_')

@@ -1,0 +1,27 @@
+{
+    "1770396219926": {
+        "id": "1770396219926",
+        "alias": "R1:Auto-Away-Mode",
+        "triggers": [
+            {
+                "entity": [
+                    "binary_sensor.isa_dw2hl_3ff9_contact_state"
+                ],
+                "state": "on"
+            }
+        ],
+        "conditions": [
+            {
+                "entity": "sensor.linp_hb01_7654_occupancy_sensor",
+                "state": "no one"
+            }
+        ],
+        "actions": [
+            {
+                "entity": "alarm_control_panel.lumi_mgl03_4e93_arming",
+                "service": "alarm_control_panel.alarm_arm_away",
+                "expected_state": "armed_away"
+            }
+        ]
+    }
+}

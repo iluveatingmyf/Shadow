@@ -87,7 +87,7 @@
                 "entity": [
                     "sensor.cuco_v3_6df1_electric_power"
                 ],
-                "state": ""
+                "state": "100"
             }
         ],
         "conditions": [],

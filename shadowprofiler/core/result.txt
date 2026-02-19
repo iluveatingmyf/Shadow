@@ -1,0 +1,22 @@
+=== Testing UNIFIED flow mode (force_unified=True) ===
+Total: 40, Success: 38, Command Only: 2, No Match: 0
+
+=== Testing SEPARATE flow mode (force_unified=False) ===
+Total: 40, Success: 38, Command Only: 2, No Match: 0
+
+Detailed results for unified mode:
+
+Sample 1: ../data/pcap/R1770396219926_s18_wl1.pcap -> success (min_ent_dist=110.0)
+  time=1771358564.466 initiator=39.156.44.17 type=CMD,ENT dist_cmd=1.0 dist_ent=110.0
+
+Sample 2: ../data/pcap/R1770396219926_s19_wl1.pcap -> success (min_ent_dist=90.52)
+  time=1771358611.716 initiator=39.156.44.17 type=CMD,ENT dist_cmd=0.0 dist_ent=90.52
+
+Sample 3: ../data/pcap/R1770396219926_s17_br-lan.pcap -> success (min_ent_dist=64.0)
+  time=1771358491.148 initiator=192.168.0.48 type=CMD,ENT dist_cmd=0.0 dist_ent=64.0
+
+Sample 4: ../data/pcap/R1770396219926_s12_wl1.pcap -> success (min_ent_dist=64.0)
+  time=1771358190.786 initiator=192.168.0.48 type=CMD,ENT dist_cmd=0.0 dist_ent=64.0
+
+Sample 5: ../data/pcap/R1770396219926_s13_wl1.pcap -> success (min_ent_dist=64.0)
+  time=1771358262.907 initiator=39.156.44.17 type=CMD,ENT dist_cmd=0.0 dist_ent=64.0
