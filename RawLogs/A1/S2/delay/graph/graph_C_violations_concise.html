@@ -1,0 +1,127 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 900px;
+                 background-color: #f0f0f0;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#6495ED", "description": "Inferred Anchor State", "device": "Lumi Mgl03 4E93 Arming", "entity_id": "alarm_control_panel.lumi_mgl03_4e93_arming", "event_ID": "anchor_alarm_control_panel.lumi_mgl03_4e93_arming", "event_type": "Entity", "id": "Entity_anchor_alarm_control_panel.lumi_mgl03_4e93_arming", "kind": "Entity", "label": "Entity\nlumi_mgl03_4e93_arming\nunknown \u2192 armed_away", "new_state": "armed_away", "old_state": "unknown", "raw_device_id": "alarm_control_panel.lumi_mgl03_4e93_arming", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "ellipse", "size": 10, "source": "System_Genesis", "timestamp": "11:24:00.266", "title": "\u003cb\u003eEntity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:00.266\u003cbr\u003edevice: Lumi Mgl03 4E93 Arming\u003cbr\u003eraw_device_id: alarm_control_panel.lumi_mgl03_4e93_arming\u003cbr\u003eevent_type: Entity\u003cbr\u003edescription: Inferred Anchor State\u003cbr\u003esource: System_Genesis\u003cbr\u003eevent_ID: anchor_alarm_control_panel.lumi_mgl03_4e93_arming\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eentity_id: alarm_control_panel.lumi_mgl03_4e93_arming\u003cbr\u003eold_state: unknown\u003cbr\u003enew_state: armed_away"}, {"action": null, "color": "#FFA07A", "command": "text.set_value", "condition_ids": ["8"], "context_id": "01KJ48CZC22HGHYT40XGYJJT9A", "description": "Blocked: Execute set_value", "device": "Xiaomi S12 C045 Execute Text Directive", "event_ID": "9", "event_type": "Command", "id": "Command_9", "kind": "Activity", "label": "Activity\nset_value\nStatus: Blocked", "parent_context_id": "01KJ48CZBJTMD6VE2EE1CXEV92", "raw_device_id": "text.xiaomi_s12_c045_execute_text_directive", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "box", "size": 10, "source": 8, "status": "blocked", "target_device": "text.xiaomi_s12_c045_execute_text_directive", "timestamp": "11:24:01.293", "title": "\u003cb\u003eActivity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:01.293\u003cbr\u003edevice: Xiaomi S12 C045 Execute Text Directive\u003cbr\u003eraw_device_id: text.xiaomi_s12_c045_execute_text_directive\u003cbr\u003eevent_type: Command\u003cbr\u003edescription: Blocked: Execute set_value\u003cbr\u003esource: 8\u003cbr\u003eevent_ID: 9\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48CZC22HGHYT40XGYJJT9A\u003cbr\u003eparent_context_id: 01KJ48CZBJTMD6VE2EE1CXEV92\u003cbr\u003econdition_ids: [\u00278\u0027]\u003cbr\u003ecommand: text.set_value\u003cbr\u003etarget_device: text.xiaomi_s12_c045_execute_text_directive\u003cbr\u003estatus: blocked"}, {"action": null, "color": "#FFA07A", "command": "text.set_value", "condition_ids": ["33"], "context_id": "01KJ48ET1P21Y4AM9PTQ57ZB2N", "description": "Blocked: Execute set_value", "device": "Xiaomi S12 C045 Execute Text Directive", "event_ID": "34", "event_type": "Command", "id": "Command_34", "kind": "Activity", "label": "Activity\nset_value\nStatus: Blocked", "parent_context_id": "01KJ48ET13YA1MHS94V7P76NP6", "raw_device_id": "text.xiaomi_s12_c045_execute_text_directive", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "box", "size": 10, "source": 33, "status": "blocked", "target_device": "text.xiaomi_s12_c045_execute_text_directive", "timestamp": "11:25:01.376", "title": "\u003cb\u003eActivity\u003c/b\u003e\u003cbr\u003etimestamp: 11:25:01.376\u003cbr\u003edevice: Xiaomi S12 C045 Execute Text Directive\u003cbr\u003eraw_device_id: text.xiaomi_s12_c045_execute_text_directive\u003cbr\u003eevent_type: Command\u003cbr\u003edescription: Blocked: Execute set_value\u003cbr\u003esource: 33\u003cbr\u003eevent_ID: 34\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48ET1P21Y4AM9PTQ57ZB2N\u003cbr\u003eparent_context_id: 01KJ48ET13YA1MHS94V7P76NP6\u003cbr\u003econdition_ids: [\u002733\u0027]\u003cbr\u003ecommand: text.set_value\u003cbr\u003etarget_device: text.xiaomi_s12_c045_execute_text_directive\u003cbr\u003estatus: blocked"}, {"action": null, "color": "#6495ED", "context_id": "01KJ48CZBJTMD6VE2EE1CXEV92", "description": "on \u2192 off", "device": "Isa Dw2Hl 3Ff9 Contact State", "entity_id": "binary_sensor.isa_dw2hl_3ff9_contact_state", "event_ID": "6", "event_type": "Entity", "id": "Entity_6", "kind": "Entity", "label": "Entity\nisa_dw2hl_3ff9_contact_state\non \u2192 off", "new_state": "off", "old_state": "on", "parent_context_id": null, "raw_device_id": "binary_sensor.isa_dw2hl_3ff9_contact_state", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "ellipse", "size": 10, "source": null, "timestamp": "11:24:01.266", "title": "\u003cb\u003eEntity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:01.266\u003cbr\u003edevice: Isa Dw2Hl 3Ff9 Contact State\u003cbr\u003eraw_device_id: binary_sensor.isa_dw2hl_3ff9_contact_state\u003cbr\u003eevent_type: Entity\u003cbr\u003edescription: on \u2192 off\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 6\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48CZBJTMD6VE2EE1CXEV92\u003cbr\u003eparent_context_id: None\u003cbr\u003eentity_id: binary_sensor.isa_dw2hl_3ff9_contact_state\u003cbr\u003eold_state: on\u003cbr\u003enew_state: off"}, {"action": null, "color": "#6495ED", "context_id": "01KJ48DWN530RSQ6D53M1G489H", "description": "off \u2192 on", "device": "Isa Dw2Hl 3Ff9 Contact State", "entity_id": "binary_sensor.isa_dw2hl_3ff9_contact_state", "event_ID": "20", "event_type": "Entity", "id": "Entity_20", "kind": "Entity", "label": "Entity\nisa_dw2hl_3ff9_contact_state\noff \u2192 on", "new_state": "on", "old_state": "off", "parent_context_id": null, "raw_device_id": "binary_sensor.isa_dw2hl_3ff9_contact_state", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "ellipse", "size": 10, "source": null, "timestamp": "11:24:31.269", "title": "\u003cb\u003eEntity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:31.269\u003cbr\u003edevice: Isa Dw2Hl 3Ff9 Contact State\u003cbr\u003eraw_device_id: binary_sensor.isa_dw2hl_3ff9_contact_state\u003cbr\u003eevent_type: Entity\u003cbr\u003edescription: off \u2192 on\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 20\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48DWN530RSQ6D53M1G489H\u003cbr\u003eparent_context_id: None\u003cbr\u003eentity_id: binary_sensor.isa_dw2hl_3ff9_contact_state\u003cbr\u003eold_state: off\u003cbr\u003enew_state: on"}, {"action": "triggered", "automation_entity_id": "automation.r11_door_breach_alert", "color": "#98FB98", "context_id": "01KJ48CZC22HGHYT40XGYJJT9A", "description": "Triggered by binary_sensor.isa_dw2hl_3ff9_contact_state state change", "device": "R11 Door Breach Alert", "event_ID": "7", "event_type": "Agent", "id": "Agent_7", "kind": "Agent", "label": "Agent\nR11 Door Breach Alert\n(+Cond)", "parent_context_id": "01KJ48CZBJTMD6VE2EE1CXEV92", "raw_device_id": "automation.r11_door_breach_alert", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "diamond", "size": 10, "source": null, "timestamp": "11:24:01.283", "title": "\u003cb\u003eAgent\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:01.283\u003cbr\u003edevice: R11 Door Breach Alert\u003cbr\u003eraw_device_id: automation.r11_door_breach_alert\u003cbr\u003eevent_type: Agent\u003cbr\u003edescription: Triggered by binary_sensor.isa_dw2hl_3ff9_contact_state state change\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 7\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: triggered\u003cbr\u003econtext_id: 01KJ48CZC22HGHYT40XGYJJT9A\u003cbr\u003eparent_context_id: 01KJ48CZBJTMD6VE2EE1CXEV92\u003cbr\u003eautomation_entity_id: automation.r11_door_breach_alert"}, {"action": null, "color": "#6495ED", "context_id": "01KJ48D9SW47VCQ4NCASV8Q8XC", "description": "no one \u2192 has one", "device": "Linp Hb01 7654 Occupancy Sensor", "entity_id": "sensor.linp_hb01_7654_occupancy_sensor", "event_ID": "11", "event_type": "Entity", "id": "Entity_11", "kind": "Entity", "label": "Entity\nlinp_hb01_7654_occupancy_sensor\nno one \u2192 has one", "new_state": "has one", "old_state": "no one", "parent_context_id": null, "raw_device_id": "sensor.linp_hb01_7654_occupancy_sensor", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "ellipse", "size": 10, "source": null, "timestamp": "11:24:11.964", "title": "\u003cb\u003eEntity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:11.964\u003cbr\u003edevice: Linp Hb01 7654 Occupancy Sensor\u003cbr\u003eraw_device_id: sensor.linp_hb01_7654_occupancy_sensor\u003cbr\u003eevent_type: Entity\u003cbr\u003edescription: no one \u2192 has one\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 11\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48D9SW47VCQ4NCASV8Q8XC\u003cbr\u003eparent_context_id: None\u003cbr\u003eentity_id: sensor.linp_hb01_7654_occupancy_sensor\u003cbr\u003eold_state: no one\u003cbr\u003enew_state: has one"}, {"action": null, "color": "#FFA07A", "command": "alarm_control_panel.alarm_arm_away", "condition_ids": ["22"], "context_id": "01KJ48DWNMMCKFAKY3BC37N500", "description": "Blocked: Execute alarm_arm_away", "device": "Lumi Mgl03 4E93 Arming", "event_ID": "23", "event_type": "Command", "id": "Command_23", "kind": "Activity", "label": "Activity\nalarm_arm_away\nStatus: Blocked", "parent_context_id": "01KJ48DWN530RSQ6D53M1G489H", "raw_device_id": "alarm_control_panel.lumi_mgl03_4e93_arming", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "box", "size": 10, "source": 22, "status": "blocked", "target_device": "alarm_control_panel.lumi_mgl03_4e93_arming", "timestamp": "11:24:31.297", "title": "\u003cb\u003eActivity\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:31.297\u003cbr\u003edevice: Lumi Mgl03 4E93 Arming\u003cbr\u003eraw_device_id: alarm_control_panel.lumi_mgl03_4e93_arming\u003cbr\u003eevent_type: Command\u003cbr\u003edescription: Blocked: Execute alarm_arm_away\u003cbr\u003esource: 22\u003cbr\u003eevent_ID: 23\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48DWNMMCKFAKY3BC37N500\u003cbr\u003eparent_context_id: 01KJ48DWN530RSQ6D53M1G489H\u003cbr\u003econdition_ids: [\u002722\u0027]\u003cbr\u003ecommand: alarm_control_panel.alarm_arm_away\u003cbr\u003etarget_device: alarm_control_panel.lumi_mgl03_4e93_arming\u003cbr\u003estatus: blocked"}, {"action": "triggered", "automation_entity_id": "automation.r1_auto_away_mode", "color": "#98FB98", "context_id": "01KJ48DWNMMCKFAKY3BC37N500", "description": "Triggered by binary_sensor.isa_dw2hl_3ff9_contact_state state change", "device": "R1 Auto Away Mode", "event_ID": "21", "event_type": "Agent", "id": "Agent_21", "kind": "Agent", "label": "Agent\nR1 Auto Away Mode\n(+Cond)", "parent_context_id": "01KJ48DWN530RSQ6D53M1G489H", "raw_device_id": "automation.r1_auto_away_mode", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "diamond", "size": 10, "source": null, "timestamp": "11:24:31.285", "title": "\u003cb\u003eAgent\u003c/b\u003e\u003cbr\u003etimestamp: 11:24:31.285\u003cbr\u003edevice: R1 Auto Away Mode\u003cbr\u003eraw_device_id: automation.r1_auto_away_mode\u003cbr\u003eevent_type: Agent\u003cbr\u003edescription: Triggered by binary_sensor.isa_dw2hl_3ff9_contact_state state change\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 21\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: triggered\u003cbr\u003econtext_id: 01KJ48DWNMMCKFAKY3BC37N500\u003cbr\u003eparent_context_id: 01KJ48DWN530RSQ6D53M1G489H\u003cbr\u003eautomation_entity_id: automation.r1_auto_away_mode"}, {"action": null, "color": "#6495ED", "context_id": "01KJ48ET13YA1MHS94V7P76NP6", "description": "off \u2192 on", "device": "Lumi Bmgl01 2821 Motion Sensor", "entity_id": "binary_sensor.lumi_bmgl01_2821_motion_sensor", "event_ID": "29", "event_type": "Entity", "id": "Entity_29", "kind": "Entity", "label": "Entity\nlumi_bmgl01_2821_motion_sensor\noff \u2192 on", "new_state": "on", "old_state": "off", "parent_context_id": null, "raw_device_id": "binary_sensor.lumi_bmgl01_2821_motion_sensor", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "ellipse", "size": 10, "source": null, "timestamp": "11:25:01.348", "title": "\u003cb\u003eEntity\u003c/b\u003e\u003cbr\u003etimestamp: 11:25:01.348\u003cbr\u003edevice: Lumi Bmgl01 2821 Motion Sensor\u003cbr\u003eraw_device_id: binary_sensor.lumi_bmgl01_2821_motion_sensor\u003cbr\u003eevent_type: Entity\u003cbr\u003edescription: off \u2192 on\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 29\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: None\u003cbr\u003econtext_id: 01KJ48ET13YA1MHS94V7P76NP6\u003cbr\u003eparent_context_id: None\u003cbr\u003eentity_id: binary_sensor.lumi_bmgl01_2821_motion_sensor\u003cbr\u003eold_state: off\u003cbr\u003enew_state: on"}, {"action": "triggered", "automation_entity_id": "automation.r10_report_weather", "color": "#98FB98", "context_id": "01KJ48ET1P21Y4AM9PTQ57ZB2N", "description": "Triggered by binary_sensor.lumi_bmgl01_2821_motion_sensor state change", "device": "R10 Report Weather", "event_ID": "32", "event_type": "Agent", "id": "Agent_32", "kind": "Agent", "label": "Agent\nR10 Report Weather\n(+Cond)", "parent_context_id": "01KJ48ET13YA1MHS94V7P76NP6", "raw_device_id": "automation.r10_report_weather", "session_id": "557698a4-2e73-4c50-a50e-94c202e80abc", "shape": "diamond", "size": 10, "source": null, "timestamp": "11:25:01.367", "title": "\u003cb\u003eAgent\u003c/b\u003e\u003cbr\u003etimestamp: 11:25:01.367\u003cbr\u003edevice: R10 Report Weather\u003cbr\u003eraw_device_id: automation.r10_report_weather\u003cbr\u003eevent_type: Agent\u003cbr\u003edescription: Triggered by binary_sensor.lumi_bmgl01_2821_motion_sensor state change\u003cbr\u003esource: None\u003cbr\u003eevent_ID: 32\u003cbr\u003esession_id: 557698a4-2e73-4c50-a50e-94c202e80abc\u003cbr\u003eaction: triggered\u003cbr\u003econtext_id: 01KJ48ET1P21Y4AM9PTQ57ZB2N\u003cbr\u003eparent_context_id: 01KJ48ET13YA1MHS94V7P76NP6\u003cbr\u003eautomation_entity_id: automation.r10_report_weather"}]);
+                  edges = new vis.DataSet([{"arrows": "to", "color": "red", "from": "Entity_anchor_alarm_control_panel.lumi_mgl03_4e93_arming", "label": "Forbid\n(armed_away)", "to": "Command_9", "type": "Forbid", "width": 1}, {"arrows": "to", "color": "red", "from": "Entity_anchor_alarm_control_panel.lumi_mgl03_4e93_arming", "label": "Forbid\n(armed_away)", "to": "Command_34", "type": "Forbid", "width": 1}, {"arrows": "to", "from": "Entity_6", "label": "wasUsedBy", "to": "Command_9", "type": "wasUsedBy", "width": 1}, {"arrows": "to", "from": "Entity_6", "label": "Derive", "to": "Entity_20", "type": "Derive", "width": 1}, {"arrows": "to", "from": "Agent_7", "label": "wasAssociateWith", "to": "Command_9", "type": "wasAssociateWith", "width": 1}, {"arrows": "to", "color": "red", "from": "Entity_11", "label": "Forbid\n(has one)", "to": "Command_23", "type": "Forbid", "width": 1}, {"arrows": "to", "from": "Entity_20", "label": "wasUsedBy", "to": "Command_23", "type": "wasUsedBy", "width": 1}, {"arrows": "to", "from": "Agent_21", "label": "wasAssociateWith", "to": "Command_23", "type": "wasAssociateWith", "width": 1}, {"arrows": "to", "from": "Entity_29", "label": "wasUsedBy", "to": "Command_34", "type": "wasUsedBy", "width": 1}, {"arrows": "to", "from": "Agent_32", "label": "wasAssociateWith", "to": "Command_34", "type": "wasAssociateWith", "width": 1}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {"edges": {"smooth": {"enabled": true, "type": "cubicBezier", "forceDirection": "vertical", "roundness": 0.5}, "arrows": {"to": {"enabled": true, "scaleFactor": 1}}}, "layout": {"hierarchical": {"enabled": true, "direction": "UD", "sortMethod": "hubsize", "levelSeparation": 180, "nodeSpacing": 350, "treeSpacing": 350, "blockShifting": true, "edgeMinimization": true, "parentCentralization": true}}, "physics": {"enabled": true, "hierarchicalRepulsion": {"centralGravity": 0.0, "springLength": 250, "springConstant": 0.01, "nodeDistance": 350, "damping": 0.09}, "solver": "hierarchicalRepulsion", "stabilization": {"enabled": true, "iterations": 1000, "updateInterval": 50}}, "interaction": {"dragNodes": true, "hideEdgesOnDrag": false, "hideNodesOnDrag": false, "hover": true, "navigationButtons": true, "multiselect": true}};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
