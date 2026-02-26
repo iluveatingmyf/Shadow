@@ -27,6 +27,8 @@ class ContextualGraphBuilder:
                 count=node['count'],
                 src=node['src'], 
                 dst=node['dst'], 
+                src_mac=node.get('src_mac'), # <--- 核心修复
+                dst_mac=node.get('dst_mac'),
                 label=node['label'],
                 is_collapsed=True
             )
@@ -94,6 +96,7 @@ class ContextualGraphBuilder:
                 'count': 1,
                 'flow_ids': [current_id]
             })
+            #print(collapsed[-1])
         return collapsed
 
 
