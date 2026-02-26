@@ -9,10 +9,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("ForensicEngine")
 
 class VersionedForensicGraphBuilder:
-    """
-    核心设计：基于版本的取证图构建器
-    物理意义：横向边代表动作(Action)，纵向边代表条件(Condition)。
-    """
     def __init__(self, aggr_thresh: float = 0.8):
         self.G = nx.DiGraph()
         self.aggr_thresh = aggr_thresh

@@ -115,6 +115,11 @@ class InteractionCausalSelector:
             # 提取 entity_id
             entity_id = label_str.split('|')[0].strip() if '|' in label_str else label_str
             
+            # --- 核心修复位置：在这里拦截 VIRTUAL ---
+            # 如果 sig 是 VIRTUAL，我们直接跳过，不去跑 select_by_propagation
+            if m.get('sig') == 'VIRTUAL':
+                continue
+            
             # 关键门禁逻辑：
             # 1. 如果是 MATCHED 或 UNSUPPORTED，必须处理
             # 2. 如果是 UNCLAIMED，只有当它有明确的 entity_id (非 Unknown) 时才处理
@@ -158,9 +163,6 @@ print("-" * 140)
 # 4. 打印结果
 for ctx in causal_contexts[:-8]:
     p = ctx['primitive']  
-    # 在判断的同时赋值给 sig
-    if (sig := p['metadata'].get('sig')) == 'VIRTUAL':
-        continue
     flows = sorted(ctx['context_flows'], key=lambda x: x['ts'])
     
     # 获取 metadata 方便后续取 app 时间戳等信息
