@@ -45,58 +45,56 @@ class InteractionCausalSelector:
         m = primitive.get('metadata', {})
         label_str = m.get("label", "")
         entity_id = label_str.split('|')[0].strip() if '|' in label_str else label_str
-        target_ip = self.entity_config.get(entity_id, "Null").strip()
+        # 获取目标设备 IP
+        target_device_ip = self.entity_config.get(entity_id, "Null").strip()
 
         # Step 1: 确定种子 (Seeds)
         seeds = []
-        
         if p_type in ["MATCHED", "UNCLAIMED"]:
-            # 严格模式：只准使用 physical_id 绑定的流
             phys_id = primitive.get('physical_id')
             if phys_id:
                 seeds = [f for f in self.pool if f.get('net_id') == phys_id]
-            # 如果是这两类但没找到 physical_id，seeds 保持为空，不会进入下面的盲搜
-        
         elif p_type == "UNSUPPORTED":
-            # 只有 UNSUPPORTED 允许盲搜
             idx_start = bisect.bisect_left(self.pool_ts, t0 - self.window)
             idx_end = bisect.bisect_right(self.pool_ts, t0 + self.window)
             time_scope_flows = self.pool[idx_start:idx_end]
-            
             for f in time_scope_flows:
                 f_ips = self._get_ips_from_flow(f)
-                f_label = f.get('label', 'Unknown')
-                
-                # 检查 IP 匹配或标签匹配
-                is_target = (target_ip != "Null" and target_ip in f_ips) or (entity_id in f_label)
-                if is_target:
+                if (target_device_ip != "Null" and target_device_ip in f_ips) or (entity_id in f.get('label', '')):
                     seeds.append(f)
 
-        # Step 2: 递归扩张 (Interaction Expansion)
-        # 即使种子确定了，扩张时也要小心网关噪音
+        # Step 2: 通用交互扩张 (Interaction Expansion)
+        # 逻辑：只要包的 Src 或 Dst 涉及目标设备 IP，即视为证据链的一部分
         expanded_set = {f['net_id']: f for f in seeds}
-        current_wave = seeds
+        
+        # 定义需要追踪的“证据主体 IP 集”
+        tracked_ips = {target_device_ip} if target_device_ip != "Null" else set()
+        
+        # 初始波次包含种子中发现的所有非网关设备 IP (应对联动场景)
+        for s in seeds:
+            tracked_ips.update(self._get_ips_from_flow(s) - {self.gateway_ip})
 
+        current_wave = seeds
         for _ in range(max_hops):
             next_wave = []
             for seed in current_wave:
-                seed_ips = self._get_ips_from_flow(seed)
-                # 关键：扩张时剔除网关 IP，只按设备私有 IP 找关联流
-                device_ips = seed_ips - {self.gateway_ip} 
-                
                 seed_ts = seed['ts']
-                c_start = bisect.bisect_left(self.pool_ts, seed_ts - 1.5) # 窗口收紧到 1.5s
-                c_end = bisect.bisect_right(self.pool_ts, seed_ts + 1.5)
+                # 扩张窗口可以稍微放宽，以捕捉潜在的重传或延迟前兆
+                c_start = bisect.bisect_left(self.pool_ts, seed_ts - 2.0)
+                c_end = bisect.bisect_right(self.pool_ts, seed_ts + 5.0) # 向后多看一点，覆盖 Delay
                 
                 for candidate in self.pool[c_start:c_end]:
                     cid = candidate['net_id']
                     if cid in expanded_set: continue
                     
                     can_ips = self._get_ips_from_flow(candidate)
-                    # 只有当非网关的设备 IP 有交集时才认为是因果相关的
-                    if device_ips.intersection(can_ips):
+                    # 通用判定：只要候选包涉及任何一个被追踪的设备 IP
+                    if tracked_ips.intersection(can_ips):
                         expanded_set[cid] = candidate
                         next_wave.append(candidate)
+                        # 发现新关联设备 IP，加入追踪（处理 A 触发 B 的情况）
+                        new_ips = can_ips - {self.gateway_ip, "Null"}
+                        tracked_ips.update(new_ips)
             
             if not next_wave: break
             current_wave = next_wave
@@ -107,11 +105,6 @@ class InteractionCausalSelector:
             "context_flows": sorted(list(expanded_set.values()), key=lambda x: x['ts'])
         }
 
-        return {
-            "entity_id": entity_id,
-            "primitive": primitive,
-            "context_flows": sorted(list(expanded_set.values()), key=lambda x: x['ts'])
-        }
 
     def batch_select(self, primitives: List[Dict]) -> List[Dict]:
         """对所有节点进行因果切片，但过滤掉无意义的噪音种子"""
@@ -164,8 +157,10 @@ print("-" * 140)
 
 # 4. 打印结果
 for ctx in causal_contexts[:-8]:
-    # --- 修复位置：从 ctx 中提取 primitive 对象 ---
-    p = ctx['primitive'] 
+    p = ctx['primitive']  
+    # 在判断的同时赋值给 sig
+    if (sig := p['metadata'].get('sig')) == 'VIRTUAL':
+        continue
     flows = sorted(ctx['context_flows'], key=lambda x: x['ts'])
     
     # 获取 metadata 方便后续取 app 时间戳等信息
