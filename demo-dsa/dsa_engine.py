@@ -19,7 +19,9 @@ class AlignmentType(Enum):
 class FlowAnchor(TypedDict):
     flow_key: str 
     src_ip : str
-    dst_ip : str                  
+    dst_ip : str
+    src_mac: str
+    dst_mac: str                  
     start_time: float
     end_time: float
     packet_count: int
@@ -135,6 +137,7 @@ class DeviationSearchEngine:
         
         fg = ForensicFlowGenerator(self.pcap_path, silence_threshold=0.5)
         raw_flows = fg.get_flows_all(gateway_ip=self.gateway_ip)
+        print(raw_flows[0])
         
         sig_counter = collections.Counter((f.initiator, tuple(f.signature)) for f in raw_flows)
         noise_patterns = {sig for (ip, sig), count in sig_counter.items() if count > 5}
@@ -155,6 +158,12 @@ class DeviationSearchEngine:
             sig = purified_sig
             sig_tuple_purified = tuple(sig)
             flow_ips = {flow.initiator, flow.target_ip}
+
+            # --- 提取 MAC 地址 (从 flow 对象中获取) ---
+            # 假设你已经按照之前的建议修改了 netaudit.py 
+            s_mac = getattr(flow, 'src_mac', "00:00:00:00:00:00")
+            d_mac = getattr(flow, 'dst_mac', "00:00:00:00:00:00")
+
             match_found = False
             label_suffix, caps = "", set()
 
@@ -230,14 +239,47 @@ class DeviationSearchEngine:
                 
                 if match_found:
                     full_label = f"{ent_id} | {label_suffix}"
-                    anchor = FlowAnchor(flow_key=f"{flow.start_ts}_{flow.initiator}", src_ip=flow.initiator,dst_ip=flow.target_ip, start_time=flow.start_ts, end_time=flow.end_ts, packet_count=len(sig), payload_digest=str(sig))
-                    self.net_events.append({"ts": flow.start_ts, "label": full_label, "anchor": anchor, "type": "Matched_Flow", "caps": list(caps)})
+                    anchor = FlowAnchor(
+                        flow_key=f"{flow.start_ts}_{flow.initiator}", 
+                        src_ip=flow.initiator,
+                        dst_ip=flow.target_ip, 
+                        src_mac=s_mac, # 注入 MAC
+                        dst_mac=d_mac, # 注入 MAC
+                        start_time=flow.start_ts, 
+                        end_time=flow.end_ts, 
+                        packet_count=len(sig), 
+                        payload_digest=str(sig)
+                    )
+                    # 必须把这些带入 net_events，因为后续的 ContextualGraph 是基于 net_events 构建的
+                    self.net_events.append({
+                        "ts": flow.start_ts, 
+                        "label": full_label, 
+                        "anchor": anchor, 
+                        "type": "Matched_Flow", 
+                        "caps": list(caps)
+                    })
                     if label_suffix in ["on", "off", "has one"]: continuous_sensors[full_label].append(flow.start_ts)
                     break
 
             if not match_found:
-                anchor = FlowAnchor(flow_key=f"{flow.start_ts}_{flow.initiator}", src_ip=flow.initiator,dst_ip=flow.target_ip,start_time=flow.start_ts, end_time=flow.end_ts, packet_count=len(sig), payload_digest=str(sig))
-                self.net_events.append({"ts": flow.start_ts, "label": "Unknown", "anchor": anchor, "type": "Unknown_Flow", "caps": []})
+                anchor = FlowAnchor(
+                flow_key=f"{flow.start_ts}_{flow.initiator}", 
+                src_ip=flow.initiator,
+                dst_ip=flow.target_ip,
+                src_mac=s_mac,
+                dst_mac=d_mac,
+                start_time=flow.start_ts, 
+                end_time=flow.end_ts, 
+                packet_count=len(sig), 
+                payload_digest=str(sig)
+                )
+                self.net_events.append({
+                    "ts": flow.start_ts, 
+                    "label": "Unknown", 
+                    "anchor": anchor, 
+                    "type": "Unknown_Flow", 
+                    "caps": []
+                })
 
         self._build_virtual_state_machine(continuous_sensors)
         self.net_events.sort(key=lambda x: x['ts'])
@@ -351,6 +393,8 @@ class DeviationSearchEngine:
                         "net_label": best_net['label'], 
                         "slot": app_cat, 
                         "sig": best_net['anchor']['payload_digest'] if best_net['anchor'] else "VIRTUAL",
+                        "src_mac": best_net['anchor']['src_mac'] if best_net['anchor'] else None,
+                        "dst_mac": best_net['anchor']['dst_mac'] if best_net['anchor'] else None,
                         "net_id": best_net['net_id'] # 增加这里
                     }, 
                     anchor=best_net.get('anchor')))

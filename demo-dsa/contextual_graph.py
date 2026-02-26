@@ -1,200 +1,163 @@
+from typing import List, Dict, Set, Any
 import networkx as nx
-import logging
-from typing import List, Dict, Any, Tuple
-from collections import defaultdict
-from datetime import datetime
+from dsa_engine import DeviationSearchEngine
+from selector import InteractionCausalSelector
+import os
+import json
 
-# 配置细粒度 Debug 信息
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger("ForensicEngine")
+class ContextualGraphBuilder:
+    def __init__(self, gateway_ip: str, agg_window: float = 10.0):
+        self.gateway_ip = gateway_ip
+        # 聚合窗口：5秒内的同设备、同Label流将被合并
+        self.agg_window = agg_window 
 
-class VersionedForensicGraphBuilder:
-    def __init__(self, aggr_thresh: float = 0.8):
-        self.G = nx.DiGraph()
-        self.aggr_thresh = aggr_thresh
-        # 跟踪每个实体的版本状态: { entity_id: { "last_ver": 0, "last_ts": 0.0, "node_id": "..." } }
-        self.entity_states = {}
-        # 预定义的可信实体集合 (用于诊断)
-        self.trusted_entities = {"192.168.5.159", "192.168.0.1", "HomeAssistant", "Cloud"}
-
-    def _get_or_create_version_node(self, entity_id: str, ts: float) -> str:
-        """
-        [逻辑：纵向版本演化]
-        决定是【聚合】到旧节点，还是【分裂】出新版本。
-        物理意义：Version Edge 的 Duration 代表了设备维持在该物理状态的‘惯性’。
-        """
-        if entity_id not in self.entity_states:
-            node_id = f"{entity_id}_v0"
-            self.G.add_node(node_id, entity=entity_id, version=0, ts=ts, kind="PhysicalState")
-            self.entity_states[entity_id] = {"last_ver": 0, "last_ts": ts, "node_id": node_id}
-            return node_id
-
-        state = self.entity_states[entity_id]
-        if ts - state['last_ts'] <= self.aggr_thresh:
-            # 聚合逻辑：极短时间内连续交互，不引起宏观状态分裂
-            state['last_ts'] = ts
-            return state['node_id']
-        else:
-            # 分裂逻辑：产生新版本，记录 Stagnation (停滞)
-            old_node_id = state['node_id']
-            new_ver = state['last_ver'] + 1
-            new_node_id = f"{entity_id}_v{new_ver}"
-            self.G.add_node(new_node_id, entity=entity_id, version=new_ver, ts=ts, kind="PhysicalState")
-            
-            duration = ts - state['last_ts']
-            self.G.add_edge(old_node_id, new_node_id, type="Version", duration=round(duration, 3))
-            
-            state.update({"last_ver": new_ver, "last_ts": ts, "node_id": new_node_id})
-            return new_node_id
-
-    def build_graph(self, causal_context: Dict[str, Any]):
-        self.G.clear()
-        self.entity_states.clear()
+    def build_micro_graph(self, context_flows: List[Dict]) -> nx.DiGraph:
+        # 1. 执行流坍缩：将持续性的传感器上报聚合为 Super Node
+        collapsed_nodes = self._collapse_continuous_flows(context_flows)
         
-        primitive = causal_context['primitive']
-        flows = causal_context['context_flows']
-        target_device = causal_context['entity_id']
+        G = nx.DiGraph()
+        # 2. 添加聚合后的节点
+        for node in collapsed_nodes:
+            # 这里的 ts 采用该序列的起始时间，同时记录持续时长 duration
+            G.add_node(
+                node['net_id'], 
+                ts=node['ts_start'],
+                ts_end=node['ts_end'],
+                duration=node['ts_end'] - node['ts_start'],
+                count=node['count'],
+                src=node['src'], 
+                dst=node['dst'], 
+                label=node['label'],
+                is_collapsed=True
+            )
 
-        # 1. 注入 App 逻辑锚点 (预期行为)
-        app_node = f"AppLog_{primitive.get('dsa_idx', 'root')}"
-        self.G.add_node(app_node, kind="AppLogic", type=primitive['type'], ts=primitive['timestamp'])
+        # 3. 添加因果边 (逻辑保持不变：dst == src 且时间接续)
+        # 注意：现在由于节点减少，因果链条会清晰很多
+        sorted_nodes = sorted(G.nodes(data=True), key=lambda x: x[1]['ts'])
+        for i in range(len(sorted_nodes)):
+            for j in range(i + 1, len(sorted_nodes)):
+                n1, d1 = sorted_nodes[i]
+                n2, d2 = sorted_nodes[j]
+                # 这里的连边逻辑：前一个聚合块的结束时间到后一个聚合块的开始时间
+                if 0 < (d2['ts'] - d1['ts_end']) < 2.0 and d1['dst'] == d2['src']:
+                    G.add_edge(n1, n2)
+        
+        return G
 
-        # 2. 注入网络原子 (物理证据)
-        for flow in flows:
-            ts = flow['ts']
-            sig = str(flow.get('anchor', {}).get('payload_digest', ""))
-            net_id = flow['net_id']
-            
-            # --- 核心改进：语义重定向 (Semantic Redirection) ---
-            # 不论 Packet 的 IP 方向，只看签名指纹的物理意义
-            # CMD指纹 (如 203, 154) 代表‘因’，STATE指纹代表‘果’
-            
-            if "203" in sig or "138" in sig: # 假设这些是下行指令
-                # 语义：External -> Device (Action)
-                u_node = self._get_or_create_version_node("External_Source", ts)
-                v_node = self._get_or_create_version_node(target_device, ts)
-                self.G.add_edge(u_node, v_node, type="SemanticAction", net_id=net_id, sig=sig, ts=ts)
-                logger.debug(f"[Redirection] Flow {net_id} mapped as SemanticAction to {v_node}")
-            
-            elif "273" in sig or "274" in sig: # 假设这些是设备上报
-                # 语义：Device -> Cloud (Response)
-                u_node = self._get_or_create_version_node(target_device, ts)
-                v_node = self._get_or_create_version_node("Cloud_Sink", ts)
-                self.G.add_edge(u_node, v_node, type="SemanticResponse", net_id=net_id, sig=sig, ts=ts)
-                logger.debug(f"[Redirection] Flow {net_id} mapped as SemanticResponse from {u_node}")
 
-        # 3. 跨层链接：将 App 逻辑节点指向它实际触发的那个物理版本
-        # 查找在物理层第一个包含指令指纹的 Version Node
-        for u, v, d in self.G.edges(data=True):
-            if d.get('type') == "SemanticAction" and "203" in str(d.get('sig')):
-                self.G.add_edge(app_node, v, type="Manifestation", label="ExpectedTrigger")
-                break
+    def _collapse_continuous_flows(self, flows: List[Dict]) -> List[Dict]:
+        if not flows: return []
+        sorted_f = sorted(flows, key=lambda x: float(x['ts'])) 
+        collapsed = []
 
-        return self.G
+        for f in sorted_f:
+            anchor = f.get('anchor', {}) or {}
+            src = anchor.get('src_ip')
+            dst = anchor.get('dst_ip')
+            label = f.get('label', 'Unknown')
+            ts = float(f['ts']) 
+            current_id = f['net_id']
+            # 获取当前的签名指纹
+            current_sig = anchor.get('payload_digest', "[]")
 
-class ForensicReasoner:
+            dynamic_window = self.agg_window if label != "Unknown" else 1.0
+
+            if collapsed:
+                last = collapsed[-1]
+                if (src == last['src'] and dst == last['dst'] and 
+                    label == last['label'] and (ts - last['ts_end']) < dynamic_window):
+                    
+                    last['ts_end'] = ts
+                    last['count'] += 1
+                    if 'flow_ids' not in last: last['flow_ids'] = [last['net_id']]
+                    last['flow_ids'].append(current_id)
+                    
+                    # --- 核心修改：追加签名历史 ---
+                    if 'sig_history' not in last:
+                        last['sig_history'] = [last['sig']] # 把第一个节点的 sig 先存进去
+                    last['sig_history'].append(current_sig)
+                    
+                    continue
+
+            # 新建聚合节点
+            collapsed.append({
+                'net_id': current_id,
+                'ts_start': ts,
+                'ts_end': ts,
+                'src': src,
+                'dst': dst,
+                'src_mac': anchor.get('src_mac'), 
+                'dst_mac': anchor.get('dst_mac'),
+                'label': label,
+                'sig': current_sig,
+                'sig_history': [current_sig], # 初始化历史列表
+                'count': 1,
+                'flow_ids': [current_id]
+            })
+        return collapsed
+
+
+def run_detailed_aggregation_audit(causal_contexts: List[Dict], gateway_ip: str):
     """
-    推理引擎：通过查询图结构完成根因归因
+    审计函数：列出每个聚合节点具体合并了哪些原始 Flow
     """
-    def __init__(self, G: nx.DiGraph, primitive: Dict):
-        self.G = G
-        self.primitive = primitive
-        self.victim = primitive['metadata'].get('label', '').split('|')[0].strip()
-
-    def diagnose(self) -> Dict[str, Any]:
-        logger.info(f"\n" + "="*20 + " [ROOT CAUSE ANALYSIS] " + "="*20)
-        
-        preds = self._extract_structural_predicates()
-        
-        # --- 归因逻辑矩阵 ---
-        attack_entity = "Unknown"
-        attack_effect = "None"
-        root_cause = "Benign"
-
-        # 1. 判定延迟攻击 (Stale State)
-        if preds['long_version_stall'] and preds['delayed_semantic_action']:
-            attack_entity = "On-path Adversary (MitM)"
-            attack_effect = f"State Stagnation ({preds['max_stall']}s) leading to Stale Context"
-            root_cause = "Time-Delay Attack via Packet Interception/Late Release"
-
-        # 2. 判定非法注入 (Injection)
-        elif preds['unauthorized_trigger'] and self.primitive['type'] == "UNCLAIMED":
-            attack_entity = preds['rogue_source']
-            attack_effect = "Unauthorized Physical Actuation"
-            root_cause = "Device Compromise / Local Command Injection"
-
-        # 3. 判定逻辑篡改 (Log Injection)
-        elif self.primitive['type'] == "UNSUPPORTED" and not preds['any_physical_action']:
-            attack_entity = "Cyber Platform / Malicious App"
-            attack_effect = "Semantic Forgery (Fake Log)"
-            root_cause = "Cyber-Plane Log Injection (No Physical Basis)"
-
-        result = {
-            "Diagnosis": root_cause,
-            "Attacker": attack_entity,
-            "Effect": attack_effect,
-            "Structural_Evidence": preds
-        }
-        
-        self._print_report(result)
-        return result
-
-    def _extract_structural_predicates(self) -> Dict[str, Any]:
-        """
-        [物理语义提取]
-        通过图遍历寻找拓扑畸变特征。
-        """
-        # P1: 查找长持续时间的版本边 (停滞期)
-        version_edges = [(u,v,d) for u,v,d in self.G.edges(data=True) if d['type'] == "Version"]
-        max_stall = max([d['duration'] for u,v,d in version_edges]) if version_edges else 0
-        
-        # P2: 查找延迟的语义动作 (App发出到物理到达的差值)
-        app_ts = self.primitive['timestamp']
-        semantic_actions = [d['ts'] for u,v,d in self.G.edges(data=True) if d['type'] == "SemanticAction"]
-        min_phys_ts = min(semantic_actions) if semantic_actions else 0
-        delay_gap = min_phys_ts - app_ts if min_phys_ts > 0 else 0
-
-        # P3: 身份核查
-        # 实际代码中应从 Interaction 边的 net_id 回溯到原始包的 Source IP
-        # 这里模拟：是否存在来自非 Trust 列表的 Action
-        unauthorized = False # 逻辑点
-
-        return {
-            "long_version_stall": max_stall > 10.0,
-            "max_stall": max_stall,
-            "delayed_semantic_action": delay_gap > 5.0,
-            "any_physical_action": len(semantic_actions) > 0,
-            "unauthorized_trigger": unauthorized
-        }
-
-    def _print_report(self, res: Dict):
-        print(f"\033[1;31m[FINAL EXPLANATION]\033[0m")
-        print(f"  ● 根本原因: {res['Diagnosis']}")
-        print(f"  ● 攻击实体: {res['Attacker']}")
-        print(f"  ● 物理效果: {res['Effect']}")
-        print(f"  ● 图结构证据: Stall={res['Structural_Evidence']['max_stall']}s")
-
-# --- 集成运行示例 ---
-if __name__ == "__main__":
-    # 假设来自 InteractionCausalSelector 的输出
-    # 模拟一个延迟场景：App在 100s 发指令，物理包在 118s 到达
-    mock_context = {
-        "entity_id": "lumi_mgl03_4e93_arming",
-        "primitive": {
-            "type": "UNSUPPORTED", 
-            "timestamp": 1771817045.0,
-            "dsa_idx": "001",
-            "metadata": {"label": "lumi_mgl03_4e93_arming | armed_away"}
-        },
-        "context_flows": [
-            {"net_id": "N0014", "ts": 1771817052.0, "anchor": {"payload_digest": "[203, 203]"}}, # 拦截中的重传包
-            {"net_id": "N0027", "ts": 1771817062.0, "anchor": {"payload_digest": "[203]"}},      # 最终释放包
-            {"net_id": "N0062", "ts": 1771817103.0, "anchor": {"payload_digest": "[273]"}}       # 状态改变上报
-        ]
-    }
-
-    builder = VersionedForensicGraphBuilder(aggr_thresh=0.8)
-    G = builder.build_graph(mock_context)
+    builder = ContextualGraphBuilder(gateway_ip, agg_window=5.0)
     
-    reasoner = ForensicReasoner(G, mock_context['primitive'])
-    reasoner.diagnose()
+    print("\n" + "!"*40 + " AGGREGATION AUDIT REPORT " + "!"*40)
+    
+    for ctx in causal_contexts:
+        ent_id = ctx['entity_id']
+        flows = ctx.get('context_flows', [])
+        if not flows: continue
+
+        collapsed_nodes = builder._collapse_continuous_flows(flows)
+        
+        # 只针对发生过合并的实体进行详细输出
+        has_agg = any(node['count'] > 1 for node in collapsed_nodes)
+        
+        if has_agg:
+            print(f"\n[ENTITY: {ent_id}]")
+            for node in collapsed_nodes:
+                status = "merged" if node['count'] > 1 else "single"
+                color = "\033[93m" if node['count'] > 1 else ""
+                reset = "\033[0m"
+                
+                print(f"  > {color}Node {node['net_id']}{reset} ({status}):")
+                print(f"    - Label: {node['label']}")
+                print(f"    - Time: {node['ts_start']} -> {node['ts_end']} (Duration: {node['ts_end']-node['ts_start']:.2f}s)")
+                print(f"    - Count: {node['count']} flows")
+                if node['count'] > 1:
+                    # 打印具体合并了哪些 Flow ID
+                    print(f"    - Included Flow IDs: {', '.join(node['flow_ids'])}")
+    
+    print("\n" + "!"*100)
+
+
+
+
+PCAP_FILE = "/Users/myf/shadowprov/RawLogs/A1/S2/delay/capture_br-lan.pcap" 
+APP_LOG_FILE = "./data/app_atomics_A1S2Delay.json" 
+PROFILES_DIR = "profiles"
+def load_json(filename):
+    path = os.path.join(filename)
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f: return json.load(f)
+    return {}
+            
+# --- 新增：加载实体配置 ---
+entity_config= load_json("./profiles/entity_config.json").get("ENTITY_CONFIG", {})
+
+# 实例化引擎
+# 1. 实例化引擎并获取数据
+engine = DeviationSearchEngine(PCAP_FILE, APP_LOG_FILE, PROFILES_DIR, "192.168.0.1")
+bundle = engine.get_results_bundle()
+all_net_atoms = bundle['net_atomic_pool']
+dsa_primitives = bundle['dsa_primitives'][:-8]
+selector = InteractionCausalSelector(all_net_atoms, entity_config)
+
+# 3. 批量获取因果上下文
+# 现在 batch_select 已经在类中定义好了
+causal_contexts = selector.batch_extract(dsa_primitives)
+
+# 在主程序中调用
+run_detailed_aggregation_audit(causal_contexts, "192.168.0.1")
