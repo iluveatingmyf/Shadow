@@ -30,6 +30,9 @@ class ContextualGraphBuilder:
                 src_mac=node.get('src_mac'), # <--- 核心修复
                 dst_mac=node.get('dst_mac'),
                 label=node['label'],
+                sig=node.get('sig'),           # 当前/首个指纹
+                sig_history=node.get('sig_history', []), # 聚合历史指纹
+                flow_ids=node.get('flow_ids', []),       # 聚合的原始 ID 列表
                 is_collapsed=True
             )
 
