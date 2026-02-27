@@ -1,100 +1,115 @@
-from dsa_engine import DeviationSearchEngine
 import os
 import json
 import logging
-from typing import List, Dict, Set, Any
-logger = logging.getLogger("SELECTOR")
 import collections
-from datetime import datetime
 import bisect
-import logging
-from typing import TypedDict, Optional, List, Dict, Set, Any, Tuple
+from datetime import datetime
+from typing import List, Dict, Set, Any
+from dsa_engine import DeviationSearchEngine
+logger = logging.getLogger("CAUSAL_SELECTOR")
 
 class InteractionCausalSelector:
-    def __init__(self, net_atomic_pool: List[Dict], entity_config: Dict[str, str], gateway_ip: str = "192.168.0.1"):
-        # 确保池子按时间戳排序，方便二分查找优化性能
+    """
+    基于偏差约束的因果子图切片器 (Deviation-Guided Causal Slicer)
+    实现论文中的 Spatio-temporal Causal Reachability Analysis
+    """
+    def __init__(self, net_atomic_pool: List[Dict], entity_config: Dict[str, str], gateway_ip: str = "192.168.0.1", control_plane_ip: str = "192.168.0.157"):
+        # 按照时间戳排序，构建时空搜索的数据底座
         self.pool = sorted(net_atomic_pool, key=lambda x: x['ts'])
         self.pool_ts = [f['ts'] for f in self.pool]
         
-        self.entity_config = entity_config
-        self.gateway_ip = gateway_ip
-        self.window = 10.0  # 种子搜索窗口
+        # 拓扑角色定义 (Topological Roles)
+        self.control_plane_ip = control_plane_ip  # 控制面中心 (HA/Gateway)
+        self.gateway_ip = gateway_ip              # 边界网关
+        self.entity_config = entity_config        # 数据面实体 (Data Plane Entities)
+        
+        # 搜索超参
+        self.base_window = 10.0   # 基础容差窗口
+        self.anchor_window = 1.0  # 控制面锚点回溯极窄窗口
 
     def _get_ips_from_flow(self, flow: Dict) -> Set[str]:
         ips = set()
         anchor = flow.get('anchor')
         if anchor:
-            # 优先从 anchor 的字段里取，这最准！
             if 'src_ip' in anchor: ips.add(anchor['src_ip'])
             if 'dst_ip' in anchor: ips.add(anchor['dst_ip'])
-            
-            # 兜底：兼容旧的 flow_key 字符串逻辑
-            if not ips and anchor.get('flow_key'):
-                parts = anchor['flow_key'].split('_')
-                for p in parts:
-                    if "." in p: ips.add(p) # 简单的 IP 识别
-        
-        # 兼容 net_events 里的 target_ip
         if 'target_ip' in flow: ips.add(flow['target_ip'])
         return ips
 
-
-    def select_by_propagation(self, primitive: Dict[str, Any], max_hops: int = 1) -> Dict[str, Any]:
+    def slice_causal_subgraph(self, primitive: Dict[str, Any], max_hops: int = 1) -> Dict[str, Any]:
         t0 = primitive['timestamp']
         p_type = primitive.get('type')
         m = primitive.get('metadata', {})
         label_str = m.get("label", "")
         entity_id = label_str.split('|')[0].strip() if '|' in label_str else label_str
-        # 获取目标设备 IP
         target_device_ip = self.entity_config.get(entity_id, "Null").strip()
 
-        # Step 1: 确定种子 (Seeds)
-        seeds = []
-        if p_type in ["MATCHED", "UNCLAIMED"]:
+        seeds =[]
+        tracked_ips = {target_device_ip} if target_device_ip != "Null" else set()
+
+        # ==========================================
+        # Phase 1: Causality Anchoring (锚点定位)
+        # ==========================================
+        if p_type in["MATCHED", "UNCLAIMED"]:
+            # [物理层已证实]: 直接使用底层 Net Atomic 作为因果种子
             phys_id = primitive.get('physical_id')
             if phys_id:
-                seeds = [f for f in self.pool if f.get('net_id') == phys_id]
+                seeds =[f for f in self.pool if f.get('net_id') == phys_id]
+                
         elif p_type == "UNSUPPORTED":
-            idx_start = bisect.bisect_left(self.pool_ts, t0 - self.window)
-            idx_end = bisect.bisect_right(self.pool_ts, t0 + self.window)
-            time_scope_flows = self.pool[idx_start:idx_end]
-            for f in time_scope_flows:
+            # [因果断裂 / 物理层虚无]: 触发 Control-Plane Anchoring (控制面锚点回溯)
+            idx_start = bisect.bisect_left(self.pool_ts, t0 - self.base_window)
+            idx_end = bisect.bisect_right(self.pool_ts, t0 + self.base_window)
+            
+            # 1. 常规数据面拾遗
+            for f in self.pool[idx_start:idx_end]:
                 f_ips = self._get_ips_from_flow(f)
                 if (target_device_ip != "Null" and target_device_ip in f_ips) or (entity_id in f.get('label', '')):
                     seeds.append(f)
+            
+            # 2. 控制面恶意注入回溯 (Cyber Event Injection)
+            n_start = bisect.bisect_left(self.pool_ts, t0 - self.anchor_window)
+            n_end = bisect.bisect_right(self.pool_ts, t0 + self.anchor_window)
+            for f in self.pool[n_start:n_end]:
+                if f in seeds: continue
+                f_ips = self._get_ips_from_flow(f)
+                
+                # 约束：涉及控制平面，但不涉及目标设备，且未被认证(Unknown)
+                if self.control_plane_ip in f_ips and target_device_ip not in f_ips:
+                    if f.get('label') == "Unknown":
+                        seeds.append(f)
+                        # 将未知攻击者 IP 纳入追踪集合，以便后续扩展
+                        new_culprit = f_ips - {self.control_plane_ip, self.gateway_ip}
+                        tracked_ips.update(new_culprit)
 
-        # Step 2: 通用交互扩张 (Interaction Expansion)
-        # 逻辑：只要包的 Src 或 Dst 涉及目标设备 IP，即视为证据链的一部分
+        # ==========================================
+        # Phase 2: Spatio-temporal Expansion (时空传播与子图提取)
+        # ==========================================
         expanded_set = {f['net_id']: f for f in seeds}
         
-        # 定义需要追踪的“证据主体 IP 集”
-        tracked_ips = {target_device_ip} if target_device_ip != "Null" else set()
-        
-        # 初始波次包含种子中发现的所有非网关设备 IP (应对联动场景)
+        # 初始追踪集合补充
         for s in seeds:
             tracked_ips.update(self._get_ips_from_flow(s) - {self.gateway_ip})
 
         current_wave = seeds
         for _ in range(max_hops):
-            next_wave = []
+            next_wave =[]
             for seed in current_wave:
                 seed_ts = seed['ts']
-                # 扩张窗口可以稍微放宽，以捕捉潜在的重传或延迟前兆
+                # 传播时间约束: 允许向后追溯原因 (-2.0s), 向前追踪结果 (+5.0s)
                 c_start = bisect.bisect_left(self.pool_ts, seed_ts - 2.0)
-                c_end = bisect.bisect_right(self.pool_ts, seed_ts + 5.0) # 向后多看一点，覆盖 Delay
+                c_end = bisect.bisect_right(self.pool_ts, seed_ts + 5.0) 
                 
                 for candidate in self.pool[c_start:c_end]:
                     cid = candidate['net_id']
                     if cid in expanded_set: continue
                     
                     can_ips = self._get_ips_from_flow(candidate)
-                    # 通用判定：只要候选包涉及任何一个被追踪的设备 IP
+                    # 拓扑连通性约束
                     if tracked_ips.intersection(can_ips):
                         expanded_set[cid] = candidate
                         next_wave.append(candidate)
-                        # 发现新关联设备 IP，加入追踪（处理 A 触发 B 的情况）
-                        new_ips = can_ips - {self.gateway_ip, "Null"}
-                        tracked_ips.update(new_ips)
+                        tracked_ips.update(can_ips - {self.gateway_ip, "Null"})
             
             if not next_wave: break
             current_wave = next_wave
@@ -105,30 +120,19 @@ class InteractionCausalSelector:
             "context_flows": sorted(list(expanded_set.values()), key=lambda x: x['ts'])
         }
 
-
-    def batch_select(self, primitives: List[Dict]) -> List[Dict]:
-        """对所有节点进行因果切片，但过滤掉无意义的噪音种子"""
-        results = []
+    def batch_extract(self, primitives: List[Dict]) -> List[Dict]:
+        results =[]
         for p in primitives:
             m = p.get('metadata', {})
-            label_str = m.get("label", "")
-            # 提取 entity_id
-            entity_id = label_str.split('|')[0].strip() if '|' in label_str else label_str
+            entity_id = m.get("label", "").split('|')[0].strip()
             
-            # --- 核心修复位置：在这里拦截 VIRTUAL ---
-            # 如果 sig 是 VIRTUAL，我们直接跳过，不去跑 select_by_propagation
-            if m.get('sig') == 'VIRTUAL':
-                continue
+            # 噪音门禁：忽略纯虚拟包和无实体的 UNCLAIMED
+            if m.get('sig') == 'VIRTUAL': continue
+            if p['type'] == "UNCLAIMED" and entity_id == "Unknown": continue
             
-            # 关键门禁逻辑：
-            # 1. 如果是 MATCHED 或 UNSUPPORTED，必须处理
-            # 2. 如果是 UNCLAIMED，只有当它有明确的 entity_id (非 Unknown) 时才处理
-            if p['type'] in ["MATCHED", "UNSUPPORTED"] or (p['type'] == "UNCLAIMED" and entity_id != "Unknown"):
-                results.append(self.select_by_propagation(p))
-            else:
-                # 剩下的就是 Unknown + UNCLAIMED，这些是纯噪音，直接跳过
-                continue
+            results.append(self.slice_causal_subgraph(p))
         return results
+
 
 PCAP_FILE = "/Users/myf/shadowprov/RawLogs/A1/S2/delay/capture_br-lan.pcap" 
 APP_LOG_FILE = "./data/app_atomics_A1S2Delay.json" 
@@ -155,7 +159,7 @@ selector = InteractionCausalSelector(all_net_atoms, entity_config)
 
 # 3. 批量获取因果上下文
 # 现在 batch_select 已经在类中定义好了
-causal_contexts = selector.batch_select(dsa_primitives)
+causal_contexts = selector.batch_extract(dsa_primitives)
 print("\n" + "="*140)
 print(f"{'NET_ID':<8} | {'TIMESTAMP':<15} | {'DIRECTION':<45} | {'SIGNATURE (SEQ)':<40} | {'LABEL'}")
 print("-" * 140)
@@ -163,6 +167,7 @@ print("-" * 140)
 # 4. 打印结果
 for ctx in causal_contexts[:-8]:
     p = ctx['primitive']  
+    print(p)
     flows = sorted(ctx['context_flows'], key=lambda x: x['ts'])
     
     # 获取 metadata 方便后续取 app 时间戳等信息
