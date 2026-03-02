@@ -1,9 +1,23 @@
-from typing import List, Dict, Set, Any
-import networkx as nx
-from dsa_engine import DeviationSearchEngine
-from selector import InteractionCausalSelector
 import os
 import json
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录 (rca/ 的上一级，即 shadowprov/)
+project_root = os.path.abspath(os.path.join(current_dir, ".."))
+
+# 1. 解决跨文件夹调用 dsa_engine 的问题
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# 2. 修改文件加载函数，使其基于根目录
+def get_absolute_path(relative_path):
+    """将基于根目录的相对路径转换为绝对路径"""
+    return os.path.join(project_root, relative_path)
+    
+from typing import List, Dict, Set, Any
+import networkx as nx
+from dsa.dsa_engine import DeviationSearchEngine
+from selector import InteractionCausalSelector
 
 class ContextualGraphBuilder:
     def __init__(self, gateway_ip: str, agg_window: float = 10.0):
@@ -137,33 +151,3 @@ def run_detailed_aggregation_audit(causal_contexts: List[Dict], gateway_ip: str)
                     print(f"    - Included Flow IDs: {', '.join(node['flow_ids'])}")
     
     print("\n" + "!"*100)
-
-
-
-
-PCAP_FILE = "/Users/myf/shadowprov/RawLogs/A1/S2/delay/capture_br-lan.pcap" 
-APP_LOG_FILE = "./data/app_atomics_A1S2Delay.json" 
-PROFILES_DIR = "profiles"
-def load_json(filename):
-    path = os.path.join(filename)
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: return json.load(f)
-    return {}
-            
-# --- 新增：加载实体配置 ---
-entity_config= load_json("./profiles/entity_config.json").get("ENTITY_CONFIG", {})
-
-# 实例化引擎
-# 1. 实例化引擎并获取数据
-engine = DeviationSearchEngine(PCAP_FILE, APP_LOG_FILE, PROFILES_DIR, "192.168.0.1")
-bundle = engine.get_results_bundle()
-all_net_atoms = bundle['net_atomic_pool']
-dsa_primitives = bundle['dsa_primitives'][:-8]
-selector = InteractionCausalSelector(all_net_atoms, entity_config)
-
-# 3. 批量获取因果上下文
-# 现在 batch_select 已经在类中定义好了
-causal_contexts = selector.batch_extract(dsa_primitives)
-
-# 在主程序中调用
-run_detailed_aggregation_audit(causal_contexts, "192.168.0.1")

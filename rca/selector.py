@@ -1,11 +1,30 @@
 import os
 import json
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录 (rca/ 的上一级，即 shadowprov/)
+project_root = os.path.abspath(os.path.join(current_dir, ".."))
+
+# 1. 解决跨文件夹调用 dsa_engine 的问题
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# 2. 修改文件加载函数，使其基于根目录
+def get_absolute_path(relative_path):
+    """将基于根目录的相对路径转换为绝对路径"""
+    return os.path.join(project_root, relative_path)
+    
+
+# 1. 解决跨文件夹调用 dsa_engine 的问题
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 import logging
 import collections
 import bisect
 from datetime import datetime
 from typing import List, Dict, Set, Any
-from dsa_engine import DeviationSearchEngine
+from dsa.dsa_engine import DeviationSearchEngine
 logger = logging.getLogger("CAUSAL_SELECTOR")
 
 class InteractionCausalSelector:
@@ -46,7 +65,6 @@ class InteractionCausalSelector:
 
         seeds =[]
         tracked_ips = {target_device_ip} if target_device_ip != "Null" else set()
-
         # ==========================================
         # Phase 1: Causality Anchoring (锚点定位)
         # ==========================================
@@ -133,10 +151,10 @@ class InteractionCausalSelector:
             results.append(self.slice_causal_subgraph(p))
         return results
 
-
-PCAP_FILE = "/Users/myf/shadowprov/RawLogs/A1/S2/delay/capture_br-lan.pcap" 
-APP_LOG_FILE = "./data/app_atomics_A1S2Delay.json" 
-PROFILES_DIR = "profiles"
+"""PCAP_FILE = get_absolute_path("RawLogs/A1/S2/delay/capture_br-lan.pcap")
+PROFILES_DIR = get_absolute_path("dsa/profiles") 
+ENTITY_CONFIG_PATH = get_absolute_path("dsa/profiles/entity_config.json")
+APP_LOG_FILE = get_absolute_path("data/app_atomics_A1S2Delay.json")
 def load_json(filename):
     path = os.path.join(filename)
     if os.path.exists(path):
@@ -144,7 +162,7 @@ def load_json(filename):
     return {}
             
 # --- 新增：加载实体配置 ---
-entity_config= load_json("./profiles/entity_config.json").get("ENTITY_CONFIG", {})
+entity_config= load_json(ENTITY_CONFIG_PATH).get("ENTITY_CONFIG", {})
 
 # 实例化引擎
 # 1. 实例化引擎并获取数据
@@ -192,4 +210,4 @@ for ctx in causal_contexts[:-8]:
             color = "\033[92m" # 已识别指纹，绿色
             
         ts_str = f"{f['ts']:<15.3f}"
-        print(f"{color}{f['net_id']:<8} | {ts_str} | {direction:<45} | {str(sig):<40} | {f.get('label')}\033[0m")
+        print(f"{color}{f['net_id']:<8} | {ts_str} | {direction:<45} | {str(sig):<40} | {f.get('label')}\033[0m")"""
