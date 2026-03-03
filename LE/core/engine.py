@@ -476,28 +476,33 @@ class LogicEngine:
 # ==========================================
 # 3. 导出与入口
 # ==========================================
-def export_corrected_graph_to_g6(G, output_path="shadow_prov_final_graph.json"):
-    nodes_for_g6, edges_for_g6 = [], []
+def export_raw_logic_graph(G, output_path="shadow_prov_logic_graph.json"):
+    """
+    完全保留推理语义的导出，不进行任何 schema 转换
+    """
+    nodes_for_json, edges_for_json = [], []
     for node_id, attrs in G.nodes(data=True):
-        kind = attrs.get("kind", "Entity")
-        g6_type = "GhostNode" if "Ghost" in kind else ("Activity" if kind in ["Command", "Activity"] else "Entity")
-        nodes_for_g6.append({"id": str(node_id), "type": g6_type, "label": attrs.get("label", str(node_id)), "properties": {k: str(v) for k,v in attrs.items()}})
+        # 保留所有原始属性，包括 kind, sub_kind, is_zombie 等
+        node_entry = {"id": str(node_id)}
+        node_entry.update({k: str(v) for k, v in attrs.items()})
+        nodes_for_json.append(node_entry)
     
     for u, v, attrs in G.edges(data=True):
-        et = attrs.get("type", "rel")
-        # 语义映射转换：将推理边转化为标准出处边，以证明等价性
-        if et == "sreplace":
-            pass
-        if et in ['sadvance', 'strigger', 'shouldTrigger']: 
-            et = "wasUsedBy"
-        elif et in ['sgen']: 
-            et = "Generate"
-        elif et in ['shouldDerive', 'sderive']: 
-            et = "Derive"
-            
-        edges_for_g6.append({"source": str(u), "target": str(v), "type": et, "label": attrs.get("label", "").replace("\n", " ")})
+        # 严格保留 sreplace, shouldTrigger, sforbid 等推理语义
+        edge_entry = {
+            "source": str(u),
+            "target": str(v),
+            "type": attrs.get("type", "rel"),
+            "label": attrs.get("label", "")
+        }
+        # 附带所有推理元数据（如 lag 时间，audit 备注等）
+        edge_entry.update({k: str(v) for k, v in attrs.items() if k not in ["source", "target", "type", "label"]})
+        edges_for_json.append(edge_entry)
     
-    with open(output_path, 'w', encoding='utf-8') as f: json.dump({"nodes": nodes_for_g6, "edges": edges_for_g6}, f, indent=4)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump({"nodes": nodes_for_json, "edges": edges_for_json}, f, indent=4)
+    print(f"[*] Logic Graph exported to {output_path} (Raw Inference preserved).")
+
 
 if __name__ == "__main__":
     GRAPH_FILE = "/Users/myf/shadowprov/RawLogs/A1/S2/delay/graph/provenance_analysis_data.json"
@@ -512,4 +517,4 @@ if __name__ == "__main__":
         engine = LogicEngine(G_cyb, dsa_primitives, abbm_rules)
         corrected_G = engine.run()
         audit_correction_edges(corrected_G)
-        export_corrected_graph_to_g6(corrected_G)
+        export_raw_logic_graph(corrected_G)
