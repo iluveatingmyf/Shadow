@@ -179,26 +179,36 @@ class LogicEngine:
                             self.G.add_edge(g_id, act_id, label="shouldAdvance", type="shouldAdvance")
                             print(f"  [+] shouldAdvance (Logic): {g_id} -> {act_id}")
 
-    # === Phase 3: Temporal Latency ===
     def phase_3_temporal(self):
-        print("\n[Phase 3] Checking Temporal Latency (shouldPrecede)...")
+        print("\n[Phase 3] Checking Temporal Latency (shouldPrecede: Ghost -> Nearest Clean Entity)...")
         ghost_nodes = [n for n, d in self.G.nodes(data=True) if d.get("kind") == "GhostEntity"]
+        
         for g_id in ghost_nodes:
             g_data = self.G.nodes[g_id]
-            g_time, eid, state = g_data.get("_dt"), g_data.get("entity_id"), str(g_data.get("new_state"))
+            g_time, eid, g_state = g_data.get("_dt"), g_data.get("entity_id"), str(g_data.get("new_state"))
+            
             timeline = self.query_oracle_timeline(eid)
-            start_idx = bisect.bisect_right(timeline, (g_time, "~~~~", "~~~~"))
-            for i in range(start_idx, len(timeline)):
+            idx = bisect.bisect_right(timeline, (g_time, "~~~~", "~~~~"))
+            
+            for i in range(idx, len(timeline)):
                 l_time, l_state, l_node = timeline[i]
-                if "Ghost" in str(l_node): continue
-                if str(l_state) == state:
-                    lag = (l_time - g_time).total_seconds()
-                    if 0 <= lag < 120.0:
+                
+                # 核心互斥检查：
+                # 1. 必须是真实节点
+                # 2. 状态一致
+                # 3. ！！！该节点不能在禁区内 (in_forbidden_zone) ！！！
+                #    如果在禁区内，它将被 Phase 8 的 replacedBy 处理，而不是 shouldPrecede
+                if "Ghost" not in str(l_node) and str(l_state) == g_state:
+                    if not self.G.nodes[l_node].get("in_forbidden_zone", False):
+                        lag = (l_time - g_time).total_seconds()
                         self.G.add_edge(g_id, l_node, label=f"shouldPrecede\n({lag:.2f}s)", type="shouldPrecede")
+                        print(f"  [+] shouldPrecede (Clean): {g_id} -> {l_node}")
                         break
-                else: break
+                    else:
+                        print(f"  [-] Skipping shouldPrecede for {l_node}: Node is in Forbidden Zone (Subject to Replacement).")
+                        # 注意：这里不 break，因为可能在禁区之后还有一个干净的相同状态节点（虽然概率低）
 
-    # === Phase 4: Counterfactual Inference ===
+
     # === Phase 4: Counterfactual Inference ===
     def phase_4_inference(self):
         print("\n[Phase 4] Generating Tainted Subgraphs (Counterfactual)...")
@@ -312,163 +322,153 @@ class LogicEngine:
                         print(v)
                         forbidden_zone.add(v)
             if len(forbidden_zone) > current_len: changed = True
+        
+        
+        #染色逻辑
+        for nid in forbidden_zone:
+            self.G.nodes[nid]["in_forbidden_zone"] = True
+            # 可选：修改 label 方便可视化调试
+            if "[FORBIDDEN]" not in self.G.nodes[nid].get("label", ""):
+                self.G.nodes[nid]["label"] += "\n[FORBIDDEN]"
+
         return forbidden_zone
 
-    # === Phase 8: Restorative SGEN (Counterfactual) ===
+    # === 修正后的 Phase 8: 状态替换逻辑 ===
     def phase_8_restorative_sgen(self):
-        print("\n[Phase 8] Restoring Silenced Commands (Counterfactual Restoration)...")
-        # 1. 识别被污染的禁区 Cascade
+        print("\n[Phase 8] Restoring Silenced Commands (Causal Replacement)...")
         forbidden_zone = self._identify_forbidden_cascade()
-        
-        # 2. 查找所有的活动/命令节点
         all_cmds = [n for n, d in self.G.nodes(data=True) if d.get("kind") in ["Activity", "Command"]]
         
         for cmd_id in all_cmds:
             cmd_data = self.G.nodes[cmd_id]
-            
-            # 3. 如果命令本身在禁区内，或者已经是僵尸节点，则不进行恢复
             if cmd_id in forbidden_zone or cmd_data.get("is_zombie"): continue
 
-            # 4. 检查该命令是否成功生成了新状态 (寻找非禁区的 Generate/sgen 边)
-            has_clean_generate = False
-            for _, target, d in self.G.out_edges(cmd_id, data=True):
-                if d.get("type") in ["Generate", "sgen"] and target not in forbidden_zone:
-                    has_clean_generate = True; break
+            # 寻找被沉默的命令
+            has_clean_generate = any(d.get("type") in ["Generate", "sgen"] and target not in forbidden_zone 
+                                     for _, target, d in self.G.out_edges(cmd_id, data=True))
             
-            # 5. 如果没有 clean generate，表示指令被沉默
             if not has_clean_generate:
-                
-                # --- 核心修正逻辑开始 ---                
-                # 6. 获取这条指令本该达到的效果
                 rule = self._get_rule_for_activity(cmd_id)
                 if not rule: continue
                 eff = self._get_effect_from_rule(rule)
-                target_eid = eff.get("entity_id")
-                target_state = str(eff.get("state"))
-                if not target_eid: continue
-
-                # 7. 直接去检查目标设备 (Target Entity) 的历史记录
+                target_eid, target_state = eff.get("entity_id"), str(eff.get("state"))
+                
+                # 在时间线上寻找被“顶替”的脏节点
                 cmd_dt = parse_dt(cmd_data.get("_dt"))
                 timeline = self.query_oracle_timeline(target_eid)
-                
-                # 找到该命令时间点之后，在禁区内被 displaced 的状态节点
-                displaced_node = None
-                
-                # 遍历时间线，寻找指令时间点之后的第一个“脏”数据
-                for dt, st, nid in timeline:
-                    if dt > cmd_dt:
-                        if nid in forbidden_zone:
-                            # 找到了受禁区影响的实体状态节点
-                            displaced_node = nid
-                            break
-                        else:
-                            # 如果遇到了禁区外的干净节点，说明没有被 displaced 淹没
-                            break
+                idx = bisect.bisect_left(timeline, (cmd_dt, "", ""))
 
-                # 8. 如果确实找到了被污染的 displaced_node，则伪造一个 Ghost 节点把状态补回来
-                if displaced_node:
-                    print(f"  [Restoration Audit] 指令 {cmd_id} 被淹没！补齐状态: {target_state} (基于设备 {target_eid})")
-                    
+                # --- 1. 往前找：寻找逻辑起点 A(ON) ---
+                # idx-1 是时间轴上紧挨着命令之前的节点
+                prev_node = None
+                if idx > 0:
+                    _, _, prev_node = timeline[idx-1]
+
+                # --- 3. 建立修复边 ---
+                if prev_node:
                     ghost_id = f"Ghost_Restored_{cmd_id}"
-                    # 紧跟指令时间，伪造一个恢复状态
                     g_dt = cmd_dt + timedelta(milliseconds=350)
                     
-                    # 添加恢复用的 Ghost 节点
-                    self.G.add_node(ghost_id, 
-                                    label=f"Ghost Entity (Restored)\n{target_eid}\n{target_state}", 
-                                    kind="GhostEntity", 
-                                    sub_kind="Ghost-II", 
-                                    entity_id=target_eid, 
-                                    new_state=target_state, 
-                                    _dt=g_dt, 
-                                    timestamp=g_dt.isoformat())
+                    self.G.add_node(ghost_id, label=f"Ghost Entity\n{target_eid}\n{target_state}", 
+                                    kind="GhostEntity", entity_id=target_eid, new_state=target_state, 
+                                    _dt=g_dt, timestamp=g_dt.isoformat())
                     
-                    # 建立连接：Command -> Generate -> GhostEntity
-                    self.G.add_edge(cmd_id, ghost_id, label="sgen (restored)", type="sgen")
+                    self.G.add_edge(prev_node, ghost_id, label="sreplacedBy", type="sreplacedBy")
                     
-                    try:
-                        # 建立连接：GhostEntity -> sreplace -> 被 displaced 的实体
-                        self.G.add_edge(ghost_id, displaced_node, label="sreplace (Displaced Reality)", type="sreplace")
-                        print("yes")
-                    except Exception as e:
-                        print(e)
+                    # Command --sgen--> Ghost
+                    self.G.add_edge(cmd_id, ghost_id, label="sgen", type="sgen")
+
                     
-                    # 更新 Oracle，确保后续逻辑基于这个恢复的状态进行
                     bisect.insort(self.oracle[target_eid], (g_dt, target_state, ghost_id))
-                # --- 核心修正逻辑结束 ---
 
 
     # === Phase 6: Lineage ===
     def phase_6_lineage(self):
-        print("\n[Phase 6] Stitching state evolution (with protection)...")
+        print("\n[Phase 6] Stitching state evolution...")
         for eid, timeline in self.oracle.items():
             sorted_tl = sorted(timeline, key=lambda x: x[0])
             for i in range(len(sorted_tl) - 1):
                 curr_dt, curr_s, curr_node = sorted_tl[i]
                 next_dt, next_s, next_node = sorted_tl[i+1]
                 
-                # --- 核心修复：保护 Phase 8 的 sreplace 边 ---
-                # 如果这两个节点之间已经存在 sreplace，说明它们是“替代”关系而非“演化”关系
-                if self.G.has_edge(curr_node, next_node):
-                    existing_type = self.G[curr_node][next_node].get("type")
-                    if existing_type == "sreplace":
-                        print(f"  [Lineage] Protected sreplace found: {curr_node} -> {next_node}. Skipping auto-derivation.")
-                        continue
-                # ------------------------------------------
+                # 防护 A: 如果已经有 replacedBy 关系，严禁再加演化边
+                if self.G.has_edge(next_node, curr_node) and self.G[next_node][curr_node].get("type") == "replacedBy":
+                    continue
 
                 if "Ghost" in str(curr_node) or "Ghost" in str(next_node):
                     if str(curr_s) != str(next_s):
-                        self.G.add_edge(curr_node, next_node, label="shouldDerive", type="shouldDerive")
+                        # 只有在没有被 replacedBy 的情况下才加推演
+                        if not self.G.has_edge(curr_node, next_node):
+                            self.G.add_edge(curr_node, next_node, label="shouldDerive", type="shouldDerive")
                     else:
-                        self.G.add_edge(curr_node, next_node, label="shouldPrecede", type="shouldPrecede")
-
-
+                        # 相同状态走对齐
+                        if not self.G.has_edge(curr_node, next_node):
+                            self.G.add_edge(curr_node, next_node, label="shouldPrecede", type="shouldPrecede")
     # === Phase 7: Conflict Resolution ===
     # === 优化后的 Phase 7: Conflict Resolution ===
     def phase_7_conflict_resolution(self):
-        print("\n[Phase 7] Suppressing legacy edges (Transitive Reduction)...")
+        print("\n[Phase 7] Suppressing legacy edges (Strict Shadow Path Reduction)...")
         edges_to_suppress = []
 
-        # 遍历图中所有的边
-        for u, v, d in list(self.G.edges(data=True)):
-            edge_type = d.get("type", "")
+        # 定义允许构成“影子逻辑通路”的边类型
+        # 这些边代表了逻辑上的推导、替换和时间对齐
+        SHADOW_EDGE_TYPES = {"shouldDerive", "shouldPrecede", "sreplacedBy", "sgen"}
+
+        # 获取所有原始的物理推导边
+        physical_derives = [(u, v) for u, v, d in self.G.edges(data=True) if d.get("type") == "Derive"]
+
+        for u, v in physical_derives:
+            # 临时移除物理边以寻找替代的逻辑路径
+            edge_data = self.G.get_edge_data(u, v)
+            self.G.remove_edge(u, v)
             
-            # 我们只处理那些可能是“旧时代遗留”的原始边
-            if edge_type in ["Derive", "Generate", "wasUsedBy", "rel"]:
-                
-                # 寻找是否存在一条“修正路径”绕过了这条直连边
-                # 即寻找 u -> ... (包含 Ghost) -> ... -> v 的替代路径
-                try:
-                    # 查找所有从 u 到 v 的简单路径
-                    for path in nx.all_simple_paths(self.G, source=u, target=v, cutoff=3):
-                        if len(path) > 2: # 路径长度大于2，说明中间有跳板
-                            # 检查路径中是否包含我们新加入的修正边类型
-                            path_edges = []
-                            for i in range(len(path)-1):
-                                path_edges.append(self.G[path[i]][path[i+1]].get("type", ""))
-                            
-                            # 如果路径中含有 should/s 开头的修正边，说明这条原始直连边是被“覆盖”的旧线
-                            if any(et.startswith("s") for et in path_edges):
-                                edges_to_suppress.append((u, v))
-                                break 
-                except nx.NetworkXNoPath:
-                    continue
+            try:
+                # 寻找从 u 到 v 的所有简单路径
+                for path in nx.all_simple_paths(self.G, source=u, target=v):
+                    # 验证路径属性：
+                    # 1. 路径中必须包含至少一个 Ghost 节点
+                    # 2. 路径上的每一条边都必须属于 SHADOW_EDGE_TYPES
+                    
+                    has_ghost = any("Ghost" in str(node) or self.G.nodes[node].get("kind") == "GhostEntity" 
+                                    for node in path)
+                    
+                    if not has_ghost:
+                        continue
 
-        # 执行抑制
+                    # 检查路径上的所有边是否都是逻辑边
+                    all_logical_edges = True
+                    for i in range(len(path) - 1):
+                        curr_edge_type = self.G[path[i]][path[i+1]].get("type")
+                        if curr_edge_type not in SHADOW_EDGE_TYPES:
+                            all_logical_edges = False
+                            break
+                    
+                    if all_logical_edges:
+                        edges_to_suppress.append((u, v))
+                        path_str = " -> ".join([str(n) for n in path])
+                        print(f"  [-] Suppression: {u}->{v} replaced by Shadow Path [{path_str}]")
+                        break
+            except nx.NetworkXNoPath:
+                pass
+            finally:
+                # 恢复边，后续统一标记
+                self.G.add_edge(u, v, **edge_data)
+
+        # 执行抑制标记
         for u, v in edges_to_suppress:
-            old_type = self.G[u][v].get("type")
             self.G[u][v]["type"] = "suppressed"
-            self.G[u][v]["label"] = f"[SUPPRESSED] (Legacy {old_type})"
-            print(f"  [-] Suppressed legacy edge: {u} --({old_type})--> {v}")
+            self.G[u][v]["label"] = "[SUPPRESSED] (Causal Correction)"
 
+    
     def run(self):
         # 严格按照全生命周期流转
         self.phase_1_manifestation()
+        
+        self.phase_5_validity()
+        self.phase_8_restorative_sgen()
         self.phase_3_temporal()
         self.phase_2_control_race() 
         self.phase_4_inference()
-        self.phase_5_validity()
-        self.phase_8_restorative_sgen()
         self.phase_6_lineage()
         self.phase_7_conflict_resolution()
         return self.G

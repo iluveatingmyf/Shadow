@@ -36,60 +36,69 @@ class DeviceCausalSlicer:
         return devices
 
     def extract_slice(self, target_device):
-        """优化版：仅提取上游因果链，防止无关联动导致子图爆炸"""
-        core_nodes = []
+        final_nodes = set()
+        visited = set()
+        
+        print(f"\n{'='*20} DEBUG START: {target_device} {'='*20}")
+
+        # 1. 递归溯源函数（带日志）
+        def trace_recursive(node_id, depth=0):
+            if node_id in visited: return
+            visited.add(node_id)
+            final_nodes.add(node_id)
+            
+            node_data = self.G.nodes[node_id]
+            indent = "  " * depth
+            print(f"{indent}[→] Tracing: {node_id} (Kind: {node_data.get('kind')}, Label: {node_data.get('label', 'N/A')[:30]}...)")
+
+            # 检查所有指向该节点的前驱
+            preds = list(self.G.predecessors(node_id))
+            if not preds:
+                print(f"{indent} [!] No predecessors for {node_id}")
+
+            for pred in preds:
+                edge_data = self.G.get_edge_data(pred, node_id)
+                # 同时检查 label 和 type，打印出来看看实际拿到了什么
+                e_type = str(edge_data.get("label", "")) or str(edge_data.get("type", ""))
+                
+                # 定义因果边白名单
+                causal_list = ["Generate", "sgen", "wasAssociateWith", "wasUsedBy", "isConditionOf", "Derive", "shouldDerive"]
+                
+                is_causal = any(c.lower() in e_type.lower() for c in causal_list)
+                
+                if is_causal:
+                    print(f"{indent}  |-- Found causal edge [{e_type}] from {pred}")
+                    trace_recursive(pred, depth + 1)
+                else:
+                    # 记录被过滤掉的边，看看是不是在这里断了
+                    print(f"{indent}  |xx Filtered edge [{e_type}] from {pred}")
+
+        # 2. 初始种子扫描
+        seeds = []
         for n, d in self.G.nodes(data=True):
             props = d.get("properties", {})
-            if (d.get("entity_id") == target_device or 
-                props.get("entity_id") == target_device or
-                d.get("target_device") == target_device):
-                core_nodes.append(n)
+            node_dev = str(d.get("entity_id") or props.get("entity_id") or d.get("device") or "")
+            
+            # 这里的匹配逻辑：如果是目标设备，或者是 Ghost
+            if (target_device in node_dev and d.get("kind") == "Entity") or "Ghost" in n:
+                seeds.append(n)
+
+        print(f"[*] Initial seeds found: {seeds}")
+
+        for seed in seeds:
+            trace_recursive(seed)
+
+        # 3. 结果验证
+        print(f"[*] Total nodes extracted: {len(final_nodes)}")
         
-        if not core_nodes: return None
+        # 检查有没有任何 User Panel 混进来了
+        panels = [n for n in final_nodes if "panel" in str(n).lower() or "panel" in str(self.G.nodes[n].get("label","")).lower()]
+        print(f"[*] Panels found in result: {panels}")
+        print(f"{'='*50}\n")
 
-        # 重点：只找 predecessors (前驱/上游)，不找 successors (后继/下游)
-        expanded_nodes = set(core_nodes)
-        
-        # 第一层：找到 Activity (Command)
-        first_hop = set()
-        for node in expanded_nodes:
-            first_hop.update(self.G.predecessors(node))
-        expanded_nodes.update(first_hop)
-
-        # 第二层：找到 Agent 或 影子节点 (Corrective Logic)
-        second_hop = set()
-        for node in first_hop:
-            second_hop.update(self.G.predecessors(node))
-        expanded_nodes.update(second_hop)
-
-
-        # 2. 【新增：无条件补全 Command 的 Agent】
-        # 遍历当前已找到的所有节点，如果是 Activity (Command)，则强行拉入其 Agent
-        supplementary_nodes = set()
-        for node_id in expanded_nodes:
-            node_data = self.G.nodes[node_id]
-            # 判断是否为 Command 节点 (根据你的数据特征，可能是 kind='Activity')
-            if node_data.get("kind") == "Activity" or node_id.startswith("Command"):
-                # 寻找该 Command 的所有前驱
-                for pred in self.G.predecessors(node_id):
-                    edge_data = self.G.get_edge_data(pred, node_id)
-                    # 如果边类型是 wasAssociateWith，或者前驱是 Agent，则加入
-                    if edge_data.get("type") == "wasAssociateWith" or pred.startswith("Agent"):
-                        supplementary_nodes.add(pred)
-        
-        expanded_nodes.update(supplementary_nodes)
-
-        
-        # 针对纠错语义的特殊保护：只包含指向当前路径的纠错边
-        final_nodes = set(expanded_nodes)
-        for u, v, d in self.G.edges(data=True):
-            # 如果某个节点在我们的链条里，且它被 sforbid 或 sreplace 指向
-            if v in expanded_nodes:
-                if d.get("type") in ["sforbid", "sreplace", "shouldPrecede"]:
-                    final_nodes.add(u) # 把纠错源拉进来
-
+        if not final_nodes: return None
         return self.G.subgraph(final_nodes).copy()
-
+        
     def _save_json(self, sub_g, path):
         nodes = [{"id": n, **d} for n, d in sub_g.nodes(data=True)]
         links = [{"source": u, "target": v, **d} for u, v, d in sub_g.edges(data=True)]
