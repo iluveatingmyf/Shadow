@@ -62,4 +62,4 @@ ent_list = [
 ]
 
 if __name__ == "__main__":
-    filter_and_save_logs('/Users/myf/shadowprov/RawLogs/A1/S2/delay/app.json', '/Users/myf/shadowprov/RawLogs/A1/S2/delay/filtered_logs.json', ent_list)
+    filter_and_save_logs('/Users/myf/shadowprov/RawLogs/A1/S2/app/app.json', '/Users/myf/shadowprov/RawLogs/A1/S2/app/filtered_logs.json', ent_list)
