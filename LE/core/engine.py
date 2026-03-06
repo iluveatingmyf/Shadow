@@ -152,6 +152,7 @@ class LogicEngine:
         for g_id in ghost_nodes:
             g_data = self.G.nodes[g_id]
             eid = g_data.get("entity_id")
+            g_state = str(g_data.get("new_state") or g_data.get("state"))
             g_time = g_data.get("_dt")
 
             # 策略：寻找在 Ghost 之后发生的、且业务逻辑上依赖该 Entity 的 Activity
@@ -163,21 +164,27 @@ class LogicEngine:
                 # 检查该 Activity 是否在逻辑上需要这个实体 (通过 ABBM 规则)
                 rule = self._get_rule_for_activity(act_id)
                 if not rule: continue
-                
-                # 检查规则的条件是否包含当前的 entity_id
-                # 有些规则叫 'condition' (dict), 有些叫 'conditions' (list)，做个兼容
-                raw_conds = rule.get("conditions", [])
-                if rule.get("condition"): raw_conds.append(rule["condition"])
-                
-                is_dependent = any(str(c.get("entity_id")) == str(eid) for c in raw_conds)
-                
-                if is_dependent:
+
+                trigger_cfg = rule.get("trigger", {})
+                t_eid = trigger_cfg.get("entity_id")
+                t_state = str(trigger_cfg.get("to"))
+
+                # 核心逻辑：如果 Ghost 节点就是这个 Command 梦寐以求的那个触发信号
+                if str(eid) == str(t_eid) and g_state == t_state:
                     act_time = parse_dt(act_data.get("_dt"))
-                    # 如果 Activity 发生在 Ghost 之后，且在合理的控制窗口内 (如 5秒)
-                    if g_time <= act_time <= g_time + timedelta(seconds=5):
+                    
+                    # 只要物理 Command 发生在 Ghost 之后（考虑延迟，窗口给大一点）
+                    # 建立 shouldAdvance，表示逻辑上的驱动关系
+                    if g_time <= act_time <= g_time + timedelta(seconds=1000):
+                        print("should Advance")
+                        print(g_id)
+                        print(act_id)
+                        
                         if not self.G.has_edge(g_id, act_id):
                             self.G.add_edge(g_id, act_id, label="shouldAdvance", type="shouldAdvance")
-                            print(f"  [+] shouldAdvance (Logic): {g_id} -> {act_id}")
+                            print(f"  [+] shouldAdvance: {g_id} (Logic Trigger) -->> {act_id} (Physical Cmd)")
+
+
 
     def phase_3_temporal(self):
         print("\n[Phase 3] Checking Temporal Latency (shouldPrecede: Ghost -> Nearest Clean Entity)...")
